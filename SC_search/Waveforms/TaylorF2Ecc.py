@@ -320,10 +320,10 @@ def waveform_construct(m1,m2,inc,e0,D,freqs,f_low,f_high,initial_orbital_phase=0
 
     Args:
         m1 (float): Mass of the first object (solar masses).
-        m2 (float): Mass of the second object.
-        inc (float): Inclination angle (solar masses).
+        m2 (float): Mass of the second object (solar masses)..
+        inc (float): Inclination angle (rads).
         e0 (float): Initial eccentricity.
-        D (float): Distance to the source.
+        D (float): Distance to the source (pc).
         freqs (array): Array of frequencies at which to evaluate the GW at.
         f_low (float): Lower frequency limit.
         f_high (float): Upper frequency limit (set by mission lifetimee).
@@ -425,8 +425,8 @@ def balrog_response(params, freqs, f_high, T_obs, engine, TDIType, logging=False
     C = np.cos(inc)
 
     # Seperating into waveform polarization (Correct splitting, does not agree with TaylorF2 in Balrog)
-    h_plus_positive = np.asnumpy(-waveform_amp*(1+C**2))
-    h_cross_positive = np.asnumpy(waveform_amp*2*C*(1j))
+    h_plus_positive = -waveform_amp*(1+C**2)
+    h_cross_positive = waveform_amp*2*C*(1j)
 
     # Currently only works for one source
     # Only generate response for f>f_low
@@ -441,20 +441,20 @@ def balrog_response(params, freqs, f_high, T_obs, engine, TDIType, logging=False
     phase = numpy.zeros([1, 1, waveform_phase.size], dtype=numpy.float, order='C')
 
     n_harmonics[0] = 1 
-    frequency[0,0,:] = freqs[freq_mask].get().copy()
-    time[0,0,:] = np.asnumpy(waveform_times.copy())
+    frequency[0,0,:] = freqs[freq_mask].copy()
+    time[0,0,:] = waveform_times.copy()
     hplus[0,0,:] = h_plus_positive.copy()
     hcross[0,0,:] = h_cross_positive.copy()
 
     # Negative waveform phase due to convention of FT used by arXiv:1605.00304v2
-    phase[0,0,:] = np.asnumpy(-waveform_phase.copy())
+    phase[0,0,:] = -waveform_phase.copy()
 
     # Run response through selected TDI channel
     # Note we dont use any corrections, I think this is what BBHx does, can add them in if we need to. 
     if TDIType == "Michelson":
 
-         Xf,Yf,Zf = alb_TDI.XYZ_General_FD(freqs.get(), 
-                           freqs.get().size, 
+         Xf,Yf,Zf = alb_TDI.XYZ_General_FD(freqs, 
+                           freqs.size, 
                            0., 
                            T_obs, 
                            numpy.array([numpy.sin(beta)],dtype=numpy.double), 
@@ -526,7 +526,7 @@ def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
             in the code. 
 
     This function computes it directly on a frequency grid with no interpolation. Checked against Balrog response.
-    Uses GPU to accelerate computation of the response, but still direclty on the full FFT grid.  
+    Uses GPU to accelerate computation of the response (if available), but still direclty on the full FFT grid.  
 
     '''
     
@@ -542,7 +542,7 @@ def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
     f_low = params[8]*2
     e0 = params[9]
 
-    waveform_amp,waveform_phase,waveform_times = waveform_construct(m1,m2,inc,e0,D,freqs.get(),f_low,f_high,initial_orbital_phase=initial_orbital_phase,logging=logging)
+    waveform_amp,waveform_phase,waveform_times = waveform_construct(m1,m2,inc,e0,D,freqs,f_low,f_high,initial_orbital_phase=initial_orbital_phase,logging=logging)
     ## Response
     # Ensures we are masking out the frequencies below which f(t=0)
     freq_mask = freqs>=f_low
@@ -642,7 +642,7 @@ def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
     return(XYZ)
 
 
-def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,freqs_sparse_on_CPU,f_high,T_obs,TDIType,logging=False):
+def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,f_high,T_obs,TDIType,logging=False):
     '''
     Computes waveform and runs it through the BBHx response. Same as the function BBHx_response_direct, 
         but uses interpolation to speed up the response calculation.
@@ -682,9 +682,8 @@ def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,freqs_sparse_o
     f_low = params[8]*2
     e0 = params[9]
 
-    waveform_amp,waveform_phase,waveform_times = waveform_construct(m1,m2,inc,e0,D,freqs_sparse_on_CPU,f_low,f_high,initial_orbital_phase=initial_orbital_phase,logging=logging)
+    waveform_amp,waveform_phase,waveform_times = waveform_construct(m1,m2,inc,e0,D,freqs_sparse,f_low,f_high,initial_orbital_phase=initial_orbital_phase,logging=logging)
 
-    waveform_amp,waveform_phase,waveform_times = waveform_amp.get(),waveform_phase.get(),waveform_times.get()
     ## Response
     # Ensures we are masking out the frequencies below which f(t=0)
     freq_mask = freqs_sparse>=f_low
@@ -704,7 +703,7 @@ def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,freqs_sparse_o
     else:
        raise ValueError("TDIType must be 'AET', 'XYZ' for BBHx reponse ")
     
-    response = LISATDIResponse(TDItag=TDITag)
+    response = LISATDIResponse(TDItag=TDITag,use_gpu=False)
 
     C = numpy.cos(inc)
 

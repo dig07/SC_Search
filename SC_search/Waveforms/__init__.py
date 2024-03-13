@@ -1,5 +1,5 @@
 from . import Constants
-from . import TayloyF2Ecc
+from . import TaylorF2Ecc
 
 
 if __name__=='__main__':

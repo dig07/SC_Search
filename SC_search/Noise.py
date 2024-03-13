@@ -21,7 +21,7 @@ def psd_AEX(f, Sdisp, Sopt, L=2.5e9):
     Returns:
         float or array of floats: Analytical noise psd in AX,EX channel
     """
-    taufL = 2 * np.pi * f * L /c
+    taufL = 2 * np.pi * f * L /const.clight
     sin2taufL = np.sin(taufL)**2
     costaufL = np.cos(taufL)
     out = (8 * sin2taufL * ((6 + 4 * costaufL + 2 * np.cos(2 * taufL)) * Sdisp
@@ -41,7 +41,7 @@ def psd_TX(f, Sdisp, Sopt, L=2.5e9):
     Returns:
         float or array of floats: Analytical noise psd in the TX channel
     """
-    halftaufL = np.pi * f * L / c
+    halftaufL = np.pi * f * L / const.clight
     sin2halftaufL = np.sin(halftaufL)**2
     out = (128 * (np.cos(halftaufL) * sin2halftaufL)**2
            * (4 * sin2halftaufL * Sdisp + Sopt))
