@@ -1,2 +1,3 @@
 SC_search.egg-*
 *__pycache__*
+*.log

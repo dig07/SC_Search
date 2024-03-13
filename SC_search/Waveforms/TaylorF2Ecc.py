@@ -1,27 +1,34 @@
+import logging
+# Imports both CuPy and Numpy for waveform generation. If CuPy is not found, Numpy is used. 
 try:
     import cupy as np 
-    print('CuPy found! Using CuPy for waveform generation')
+    logging.warning(' WAVEFORMS: CuPy found! Using CuPy for waveform generation')
     import numpy as numpy 
     use_GPU = True
     from pyWaveformBuild import direct_sum_wrap as direct_sum_wrap_gpu
 
 
 except(ImportError, ModuleNotFoundError) as e:
-    print('No CuPy, using Numpy for waveform generation')
+    logging.warning(' WAVEFORMS: No CuPy, using Numpy for waveform generation')
     import numpy as np 
     import numpy as numpy
     use_GPU = False
     from pyWaveformBuild_cpu import direct_sum_wrap as direct_sum_wrap_cpu
-    
 
+try: 
+    import alb_TDI_WFs as alb_TDI
+    from albertos.TDI_functions import XYZ2AET
+    logging.warning(' WAVEFORMS: Balrog found! Importing Balrog response as an option')
+except(ImportError, ModuleNotFoundError) as e:
+    logging.warning(' WAVEFORMS: No Balrog, Balrog response not available')
+    
 
 import scipy 
 from numba import jit
 
 # LISA imports (Balrog)
 from . import Constants as const
-# import alb_TDI_WFs as alb_TDI
-# from albertos.TDI_functions import XYZ2AET
+
 
 # LISA imports (BBHx)
 from bbhx.response.fastfdresponse import LISATDIResponse
@@ -48,52 +55,73 @@ bbhx_pre_factor = 1/(2j*np.pi*Armlength)
 @jit(nopython=True)
 def calculate_T(v, v0, e0, eta):
     '''
-    Uses the (TaylorT2) Equation 6.7b from arXiv:1605.00304v2
+    Calculates the value of T using the (TaylorT2) Equation 6.7b from arXiv:1605.00304v2.
+
+    Parameters:
+      v (float or array of floats): (pi*M*f)^{1/3} with f as frequencies of the binary system.
+      v0 (float): (pi*M*f_0)^{1/3}, with f_0 as the initial GW frequency of the binary
+      e0 (float): The initial eccentricity of the binary system.
+      eta (float): The symmetric mass ratio of the binary system.
+
+    Returns:
+      T (float or array of floats): The calculated value(s) of T at fs provided into v.
+
     '''
-    
+
     term1 = (1 + ((743 / 252) + (11 / 3) * eta) * v**2 - (32 / 5) * numpy.pi * v**3 + 
-            ((3058673 / 508032) + (5429 / 504) * eta + (617 / 72) * eta**2) * v**4 + 
-            (-(7729 / 252) + (13 / 3) * eta) * numpy.pi * v**5)
+        ((3058673 / 508032) + (5429 / 504) * eta + (617 / 72) * eta**2) * v**4 + 
+        (-(7729 / 252) + (13 / 3) * eta) * numpy.pi * v**5)
     
     term2 = ((-10052469856691 / 23471078400) + 
-             (6848 / 105) * gamma_e + 
-             (128 / 3) * numpy.pi**2 + 
-             ((3147553127 / 3048192) - 
-              (451 / 12) * numpy.pi**2) * eta - 
-             (15211 / 1728) * eta**2 + 
-             (25565 / 1296) * eta**3 + 
-             (3424 / 105) * numpy.log(16 * v**2)) * v**6
+         (6848 / 105) * gamma_e + 
+         (128 / 3) * numpy.pi**2 + 
+         ((3147553127 / 3048192) - 
+          (451 / 12) * numpy.pi**2) * eta - 
+         (15211 / 1728) * eta**2 + 
+         (25565 / 1296) * eta**3 + 
+         (3424 / 105) * numpy.log(16 * v**2)) * v**6
     
     term3 = ((-15419335 / 127008) - (75703 / 756) * eta + (14809 / 378) * eta**2) * numpy.pi * v**7
 
     term4 = -(157 / 43) * e0**2 * (v0 / v)**(19/3) * (1 + ((17592719 / 5855472) + (1103939 / 209124) * eta) * v**2 + \
-            ((2833 / 1008) - (197 / 36) * eta) * v0**2 - (2819123 / 384336) * numpy.pi * v**3 + \
-            (377 / 72) * numpy.pi * v0**3 + ((955157839 / 302766336) + (1419591809 / 88306848) * eta + \
-            (91918133 / 6307632) * eta**2) * v**4 + ((49840172927 / 5902315776) - (42288307 / 26349624) * eta - \
-            (217475983 / 7528464) * eta**2) * v**2 * v0**2 + (-(1193251 / 3048192) - (66317 / 9072) * eta + \
-            (18155 / 1296) * eta**2)*v0**4 -((166558393 / 12462660) + (679533343 / 28486080) * eta) * numpy.pi * v**5 + \
-            (-(7986575459 / 387410688) + (555367231 / 13836096) * eta) * numpy.pi * v**3 * v0**2 + \
-            ((6632455063 / 421593984) + (416185003 / 15056928) * eta) * numpy.pi * v**2 * v0**3 + \
-            ((764881 / 90720) - (949457 / 22680) * eta) * numpy.pi * v0**5 +(-(2604595243207055311 / 16582316889600000) + (31576663 / 2472750) * gamma_e + \
-            (924853159 / 40694400) * numpy.pi**2 + ((17598403624381 / 86141905920) - (886789 / 180864) * numpy.pi**2) * eta + \
-            (203247603823 / 5127494400) * eta**2 + (2977215983 / 109874880) * eta**3 + \
-            (226088539 / 7418250) * numpy.log(2) - (65964537 / 2198000) * numpy.log(3) + \
-            (31576663 / 4945500) * numpy.log(16 * v**2)) * v**6 + ((2705962157887 / 305188466688) + (14910082949515 / 534079816704) * eta - \
-            (99638367319 / 2119364352) * eta**2 - (18107872201 / 227074752) * eta**3) * v**4 * v0**2 -(1062809371 / 27672192) * numpy.pi**2 * v**3 * v0**3 + \
-            (-(20992529539469 / 17848602906624) - (15317632466765 / 637450103808) * eta + \
-            (8852040931 / 2529563904) * eta**2 + (20042012545 / 271024704) * eta**3) * v**2 * v0**4 + \
-            ((26531900578691 / 168991764480) - (3317 / 126) * gamma_e + (122833 / 10368) * numpy.pi**2 + \
-             ((9155185261 / 548674560) - (3977 / 1152) * numpy.pi**2) * eta - (5732473 / 1306368) * eta**2 - \
-             (3090307 / 139968) * eta**3 + (87419 / 1890) * numpy.log(2) - (26001 / 560) * numpy.log(3) - \
-             (3317 / 252) * numpy.log(16 * v0**2)) * v0**6)
+        ((2833 / 1008) - (197 / 36) * eta) * v0**2 - (2819123 / 384336) * numpy.pi * v**3 + \
+        (377 / 72) * numpy.pi * v0**3 + ((955157839 / 302766336) + (1419591809 / 88306848) * eta + \
+        (91918133 / 6307632) * eta**2) * v**4 + ((49840172927 / 5902315776) - (42288307 / 26349624) * eta - \
+        (217475983 / 7528464) * eta**2) * v**2 * v0**2 + (-(1193251 / 3048192) - (66317 / 9072) * eta + \
+        (18155 / 1296) * eta**2)*v0**4 -((166558393 / 12462660) + (679533343 / 28486080) * eta) * numpy.pi * v**5 + \
+        (-(7986575459 / 387410688) + (555367231 / 13836096) * eta) * numpy.pi * v**3 * v0**2 + \
+        ((6632455063 / 421593984) + (416185003 / 15056928) * eta) * numpy.pi * v**2 * v0**3 + \
+        ((764881 / 90720) - (949457 / 22680) * eta) * numpy.pi * v0**5 +(-(2604595243207055311 / 16582316889600000) + (31576663 / 2472750) * gamma_e + \
+        (924853159 / 40694400) * numpy.pi**2 + ((17598403624381 / 86141905920) - (886789 / 180864) * numpy.pi**2) * eta + \
+        (203247603823 / 5127494400) * eta**2 + (2977215983 / 109874880) * eta**3 + \
+        (226088539 / 7418250) * numpy.log(2) - (65964537 / 2198000) * numpy.log(3) + \
+        (31576663 / 4945500) * numpy.log(16 * v**2)) * v**6 + ((2705962157887 / 305188466688) + (14910082949515 / 534079816704) * eta - \
+        (99638367319 / 2119364352) * eta**2 - (18107872201 / 227074752) * eta**3) * v**4 * v0**2 -(1062809371 / 27672192) * numpy.pi**2 * v**3 * v0**3 + \
+        (-(20992529539469 / 17848602906624) - (15317632466765 / 637450103808) * eta + \
+        (8852040931 / 2529563904) * eta**2 + (20042012545 / 271024704) * eta**3) * v**2 * v0**4 + \
+        ((26531900578691 / 168991764480) - (3317 / 126) * gamma_e + (122833 / 10368) * numpy.pi**2 + \
+         ((9155185261 / 548674560) - (3977 / 1152) * numpy.pi**2) * eta - (5732473 / 1306368) * eta**2 - \
+         (3090307 / 139968) * eta**3 + (87419 / 1890) * numpy.log(2) - (26001 / 560) * numpy.log(3) - \
+         (3317 / 252) * numpy.log(16 * v0**2)) * v0**6)
 
     
     T = term1+term2+term3+term4
     return T
+
 @jit(nopython=True)
 def Lambda_f(v, v0, e0, eta):
     '''
-    Uses the (TaylorT2) Equation 6.6a from arXiv:1605.00304v2
+    Calculates the value of Lambda_f using the (TaylorT2) Equation 6.6a from arXiv:1605.00304v2.
+
+    Parameters:
+      v (float or array of floats): (pi*M*f)^{1/3} with f as frequencies of the binary system.
+      v0 (float): (pi*M*f_0)^{1/3}, with f_0 as the initial GW frequency of the binary
+      e0 (float): The initial eccentricity of the binary system.
+      eta (float): The symmetric mass ratio of the binary system.
+
+    Returns:
+      lambda_ (float or array of floats): The calculated value(s) of lambda_f at fs provided into v.
+
     '''
     term1 = 1 + ((3715/1008) + (55/12) * eta) * v**2 - 10 * numpy.pi * v**3    
     term2 = ((15293365/1016064) + (27145/1008) * eta + (3085/144) * eta**2) * v**4
@@ -161,7 +189,17 @@ def Lambda_f(v, v0, e0, eta):
 @jit(nopython=True)
 def F2EccPhase(freqs,eta,v,e0,v0,coallesence_phase,time_to_merger):
     '''
-    Uses the (TaylorF2) Equation 6.26 from arXiv:1605.00304v2. Waveform Fourier phase for TaylorF2Ecc
+    Calculates the value of Lambda_f using the (TaylorT2) Equation 6.26 from arXiv:1605.00304v2. Waveform Fourier phase for TaylorF2Ecc.
+
+    Parameters:
+      v (float or array of floats): (pi*M*f)^{1/3} with f as frequencies of the binary system.
+      v0 (float): (pi*M*f_0)^{1/3}, with f_0 as the initial GW frequency of the binary
+      e0 (float): The initial eccentricity of the binary system.
+      eta (float): The symmetric mass ratio of the binary system.
+
+    Returns:
+      psi (float or array of floats): The calculated value(s) of psi at fs provided into v.
+
     '''
     term1 = 3 / (128 * eta * v**5)
     
@@ -211,9 +249,19 @@ def F2EccPhase(freqs,eta,v,e0,v0,coallesence_phase,time_to_merger):
     return(psi)
 @jit(nopython=True)
 def time_to_merger(m1,m2,inc,e0,f_0):
+
     '''
     Calculates time to merger using TaylorT2 Eqn 6.6a from arXiv:1605.00304v2
 
+    Args:
+        m1 (float): Mass of the first object in solar masses.
+        m2 (float): Mass of the second object in solar masses.
+        inc (float): Inclination angle in radians.
+        e0 (float): Initial eccentricity.
+        f_0 (float): Initial GW frequency in Hz.
+
+    Returns:
+        float: Time to merger in seconds.
     '''
     m1 = m1*MTsun 
     m2 = m2*MTsun 
@@ -227,34 +275,63 @@ def time_to_merger(m1,m2,inc,e0,f_0):
     
     return(tm)
 
-def estimate_initial_gw_frequency(m1,m2,e0,tc,logging=False):
-    '''
-    Given tc and all other parameters, estimate initial GW frequency. Uses simple rootfinding
-    Logging parameter allows for checking that the optimizer has converged. 
-    '''
-    
-    m1 = m1*MTsun 
-    m2 = m2*MTsun
+def estimate_initial_gw_frequency(m1, m2, e0, tc, logging=False):
+    """
+    Estimates the initial gravitational wave (GW) frequency given the parameters.
 
-    M = m1+m2 
-    eta = (m1*m2)/(M**2)# # Reduced mass ratio #m1m2/M**2
+    This function uses simple rootfinding to estimate the initial GW frequency.
+    The logging parameter allows for checking that the optimizer has converged.
+
+    Args:
+        m1 (float): The mass of the first object (solar masses).
+        m2 (float): The mass of the second object (solar masses).
+        e0 (float): The eccentricity of the orbit.
+        tc (float): The time to coalescence (s).
+        logging (bool, optional): Whether to enable logging. Defaults to False.
+
+    Returns:
+        float: The estimated initial GW frequency.
+    """
     
+    m1 = m1 * MTsun 
+    m2 = m2 * MTsun
+
+    M = m1 + m2 
+    eta = (m1 * m2) / (M ** 2)  # Reduced mass ratio: m1m2/M**2
     
-    time_to_merger_root_finding = lambda f_initial : (5/256* M/eta * 1/((numpy.pi*M*f_initial)**(1/3))**8*calculate_T((numpy.pi*M*f_initial)**(1/3), (numpy.pi*M*f_initial)**(1/3), e0, eta)) - tc
+    time_to_merger_root_finding = lambda f_initial: (5 / 256 * M / eta * 1 / ((numpy.pi * M * f_initial) ** (1 / 3)) ** 8 * calculate_T((numpy.pi * M * f_initial) ** (1 / 3), (numpy.pi * M * f_initial) ** (1 / 3), e0, eta)) - tc
 
     # xtol is the difference in frequency between 1/year and 1/(year+1 second)
-    f_low_rootfinder = scipy.optimize.root_scalar(time_to_merger_root_finding,bracket=[1e-4,1e-1],x0=1.e-2,xtol=1.0055108727742241e-15)
+    f_low_rootfinder = scipy.optimize.root_scalar(time_to_merger_root_finding, bracket=[1e-4, 1e-1], x0=1.e-2, xtol=1.0055108727742241e-15)
 
-    if logging==True:
-        print('Root finding converged for f_low?: ',f_low_rootfinder.converged)
+    if logging:
+        print('Root finding converged for f_low?: ', f_low_rootfinder.converged)
     
-    return(f_low_rootfinder.root)
+    return f_low_rootfinder.root
 
 @jit(nopython=True)
 def waveform_construct(m1,m2,inc,e0,D,freqs,f_low,f_high,initial_orbital_phase=0,logging=False):
     '''
     Constructs an instance of TaylorF2Ecc waveform and returns the amplitude, phase and time-frequency map. 
-    Logging enables the printing of time to merger and Upper time in band estimates 
+
+    Note: This function and the waveform construction is forced to be done in Numpy, not CuPy. Since the waveform 
+    is only every directly expected to be evaluated on a sparse frequency grid, its faster to do this on a CPU with 
+    numba acceleration I think. 
+
+    Args:
+        m1 (float): Mass of the first object (solar masses).
+        m2 (float): Mass of the second object.
+        inc (float): Inclination angle (solar masses).
+        e0 (float): Initial eccentricity.
+        D (float): Distance to the source.
+        freqs (array): Array of frequencies at which to evaluate the GW at.
+        f_low (float): Lower frequency limit.
+        f_high (float): Upper frequency limit (set by mission lifetimee).
+        initial_orbital_phase (float, optional): Initial orbital phase. Defaults to 0.
+        logging (bool, optional): Flag to enable logging. Defaults to False.
+
+    Returns:
+        tuple: A tuple containing the amplitude, phase, and time-frequency map.
     '''
     # Unit conversions 
     m1 = m1*MTsun 
@@ -301,9 +378,29 @@ def waveform_construct(m1,m2,inc,e0,D,freqs,f_low,f_high,initial_orbital_phase=0
 
     return(Amp,Phi,times)
 
-def balrog_response(params,freqs,f_high,T_obs,engine,TDIType,logging=False):
+def balrog_response(params, freqs, f_high, T_obs, engine, TDIType, logging=False):
     '''
-    Computes response and runs it through the balrog response, f_low here is the frequency at which the binary is radiating at t=t0
+    Computes the response of a gravitational wave detector to a binary black hole waveform using the Balrog response.
+
+    Args:
+        params (list): List of parameters for the binary black hole waveform.
+        freqs (numpy.ndarray): Array of frequencies.
+        f_high (float): Upper frequency limit.
+        T_obs (float): Observation time.
+        engine (str): Engine used for the response calculation.
+        TDIType (str): Type of Time Delay Interferometry (TDI) channel.
+        logging (bool, optional): Whether to enable logging. Defaults to False.
+
+    Returns:
+        numpy.ndarray: Array representing the response of the detector to the waveform.
+
+    Raises:
+        ValueError: If TDIType is not one of 'Michelson', 'Sagnac', 'Single', 'LowFrequency', or 'Acceleration'.
+
+    Parameter order: 
+        m1, m2, D, beta, lam, inc, psis, initial_orbital_phase, f_low, e0
+        Note: f_low inputted into the code is the initial orbital frequency, it is converted to initial GW frequency 
+            in the code. 
     '''
     
     # Set up to match Balrog 
@@ -406,9 +503,31 @@ def balrog_response(params,freqs,f_high,T_obs,engine,TDIType,logging=False):
 
 def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
     '''
-    Computes waveform and runs it through the BBHx response. The response model is the same as that in arxiv:1806.10734v1 (Marsat and Baker)
+    Computes waveform and runs it through the BBHx response. The response model is the same as that in arxiv:1806.10734v1 (Marsat and Baker).
+    Response is pretty close to Balrog, but not exactly the same. 
 
-    This function computes it directly on a frequency grid with no interpolation. Checked against Balrog response. 
+    Args:
+        params (list): List of parameters for the binary black hole waveform.
+        freqs (numpy.ndarray): Array of frequencies.
+        f_high (float): Upper frequency limit.
+        T_obs (float): Observation time.
+        TDIType (str): Type of Time Delay Interferometry (TDI) channel. ('XYZ' or 'AET' for BBHx response)
+        logging (bool, optional): Whether to enable logging. Defaults to False.
+
+    Returns:
+        numpy.ndarray: Array representing the response of the detector to the waveform.
+
+    Raises:
+        ValueError: If TDIType is not one of 'Michelson', 'Sagnac', 'Single', 'LowFrequency', or 'Acceleration'.
+
+    Parameter order: 
+        m1, m2, D, beta, lam, inc, psis, initial_orbital_phase, f_low, e0
+        Note: f_low inputted into the code is the initial orbital frequency, it is converted to initial GW frequency 
+            in the code. 
+
+    This function computes it directly on a frequency grid with no interpolation. Checked against Balrog response.
+    Uses GPU to accelerate computation of the response, but still direclty on the full FFT grid.  
+
     '''
     
 
@@ -523,12 +642,172 @@ def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
     return(XYZ)
 
 
+def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,freqs_sparse_on_CPU,f_high,T_obs,TDIType,logging=False):
+    '''
+    Computes waveform and runs it through the BBHx response. Same as the function BBHx_response_direct, 
+        but uses interpolation to speed up the response calculation.
+
+
+    Args:
+        params (list): List of parameters for the binary black hole waveform.
+        freqs_sparse (array): Sparse array of frequencies at which to evaluate the amplitude,phase,t-f map and response at. 
+        freqs_dense (array): Array of frequencies on the full FFT grid to interpolate to.
+        f_high (float): Upper frequency limit.
+        T_obs (float): Observation time.
+        TDIType (str): Type of Time Delay Interferometry (TDI) channel. ('XYZ' or 'AET' for BBHx response)
+        logging (bool, optional): Whether to enable logging. Defaults to False.
+
+    Returns:
+        numpy.ndarray: Array representing the response of the detector to the waveform.
+
+    Raises:
+        ValueError: If TDIType is not one of 'Michelson', 'Sagnac', 'Single', 'LowFrequency', or 'Acceleration'.
+
+    Parameter order: 
+        m1, m2, D, beta, lam, inc, psis, initial_orbital_phase, f_low, e0
+        Note: f_low inputted into the code is the initial orbital frequency, it is converted to initial GW frequency 
+            in the code. 
+    Checked against Balrog response. Interpolates on CPU, onto the full FFT grid. 
+    '''
+    
+
+    m1 = params[0]
+    m2 = params[1]
+    D = params[2]
+    beta = params[3]
+    lam = params[4]
+    inc = params[5]
+    psis = params[6] # Polarization
+    initial_orbital_phase = params[7]
+    f_low = params[8]*2
+    e0 = params[9]
+
+    waveform_amp,waveform_phase,waveform_times = waveform_construct(m1,m2,inc,e0,D,freqs_sparse_on_CPU,f_low,f_high,initial_orbital_phase=initial_orbital_phase,logging=logging)
+
+    waveform_amp,waveform_phase,waveform_times = waveform_amp.get(),waveform_phase.get(),waveform_times.get()
+    ## Response
+    # Ensures we are masking out the frequencies below which f(t=0)
+    freq_mask = freqs_sparse>=f_low
+
+    # phi ref is an additional phase rotation which is not needed since we have applied all the rotations inside the waveform phase
+    phi_ref = 0.
+    beta = beta
+    lamda = lam
+    # Remember the psi in BBHx follows a different convention to that in Balrog
+    psi = psis
+    
+    # Run response through selected TDI channel
+    if TDIType == "AET":
+       TDITag = 'AET'
+    elif TDIType == 'XYZ':
+       TDITag = 'XYZ'    
+    else:
+       raise ValueError("TDIType must be 'AET', 'XYZ' for BBHx reponse ")
+    
+    response = LISATDIResponse(TDItag=TDITag)
+
+    C = numpy.cos(inc)
+
+    # Converting from h_plus to h_lm. 
+    BBHx_amp = np.asarray(-waveform_amp)/numpy.sqrt(5/(64*np.pi))
+
+    # Notice the lack of negative sign, I think this is internally handeled inside Balrog. 
+    BBHx_phase = waveform_phase
+
+
+    # Number of binaries currently hard set 1 
+    num_bin_all = 1
+
+    # Length of frequency array for computation 
+    length = freqs_sparse[freq_mask].shape[0]
+
+    # Only one harmonic for now 
+    num_modes = 1
+    
+    # params are amp, phase, tf, transferL1re, transferL1im, transferL2re, transferL2im, transferL3re, transferL3im
+    num_interp_params = 9 
+
+    # Dump everything in here, this is what is being used inside all the response functions 
+    out_buffer = numpy.zeros(num_interp_params*length*num_modes*num_bin_all)
+    out_buffer = out_buffer.reshape(num_interp_params, num_bin_all, num_modes, length)
+
+    # Fill in out buffer with amplitude, phase, t-f in SSB frame
+    out_buffer[0,0,0,:]= BBHx_amp
+    out_buffer[1,0,0,:]= np.asarray(BBHx_phase)
+    out_buffer[2,0,0,:]= np.asarray(waveform_times)
+    
+    out_buffer = out_buffer.flatten().copy()
+
+    dense_frequency_mask = freqs_dense>=f_low
+    dense_freqs_length = freqs_dense[dense_frequency_mask].size
+    
+    # Generate response 
+    response(freqs_sparse[freq_mask],
+                 inc,
+                 lam,
+                 beta,
+                 psi,
+                 phi_ref,
+                 length,
+                 out_buffer=out_buffer,
+                 modes = [(2,2)])
+
+    # setup interpolant
+    spline = CubicSplineInterpolant(
+        freqs_sparse[freq_mask],
+        out_buffer,
+        length=length,
+        num_interp_params=num_interp_params,
+        num_modes=num_modes,
+        num_bin_all=num_bin_all,
+        use_gpu=False,
+    )
+
+    interp_response = TemplateInterpFD(use_gpu=False)    
+    template_channels = interp_response(freqs_dense[dense_frequency_mask],spline.container,numpy.array([0]),numpy.array([T_obs]),freqs_sparse[freq_mask].size,num_modes,3)
+
+    # combine into one data stream
+    data_out = numpy.zeros((3, dense_freqs_length), dtype=complex)
+    for temp, start_i, length_i in zip(
+        template_channels,
+        interp_response.start_inds,
+        interp_response.lengths,
+    ):
+        data_out[:, start_i : start_i + length_i] = temp
+
+    
+    XYZ = numpy.zeros((3,freqs_dense.size),dtype=complex)
+    XYZ[:,dense_frequency_mask] = data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
+
+    return(XYZ)
+
 def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CPU,f_high,T_obs,TDIType,logging=False):
     '''
-    Computes waveform and runs it through the BBHx response. The response model is the same as that in arxiv:1806.10734v1 (Marsat and Baker)
+    Computes waveform and runs it through the BBHx response. Same as the function BBHx_response_interpolate_CPU, but if GPU is available  
+        it will use that.
 
-    This function computes it on a sparse grid and interpolates to the dense full FFT grid, and completely runs on a CPU. 
+    Args:
+        params (list): List of parameters for the binary black hole waveform.
+        freqs_sparse (array): Sparse array of frequencies at which to evaluate the amplitude,phase,t-f map and response at. 
+        freqs_dense (array): Array of frequencies on the full FFT grid to interpolate to.
+        f_high (float): Upper frequency limit.
+        T_obs (float): Observation time.
+        TDIType (str): Type of Time Delay Interferometry (TDI) channel. ('XYZ' or 'AET' for BBHx response)
+        logging (bool, optional): Whether to enable logging. Defaults to False.
+
+    Returns:
+        numpy.ndarray: Array representing the response of the detector to the waveform.
+
+    Raises:
+        ValueError: If TDIType is not one of 'Michelson', 'Sagnac', 'Single', 'LowFrequency', or 'Acceleration'.
+
+    Parameter order: 
+        m1, m2, D, beta, lam, inc, psis, initial_orbital_phase, f_low, e0
+        Note: f_low inputted into the code is the initial orbital frequency, it is converted to initial GW frequency 
+            in the code. 
+    Checked against Balrog response. Waveform computed on a CPU on sparse grid, response, interpolated all done on GPU (when available). 
     '''
+    
     
     m1 = params[0]
     m2 = params[1]
@@ -644,131 +923,24 @@ def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CP
 
     return(XYZ)
 
-
-
-def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,freqs_sparse_on_CPU,f_high,T_obs,TDIType,logging=False):
-    '''
-    Computes waveform and runs it through the BBHx response. The response model is the same as that in arxiv:1806.10734v1 (Marsat and Baker)
-
-    This function computes it on a sparse grid and interpolates to the dense full FFT grid, and completely runs on a CPU. 
-    '''
-    
-
-    m1 = params[0]
-    m2 = params[1]
-    D = params[2]
-    beta = params[3]
-    lam = params[4]
-    inc = params[5]
-    psis = params[6] # Polarization
-    initial_orbital_phase = params[7]
-    f_low = params[8]*2
-    e0 = params[9]
-
-    waveform_amp,waveform_phase,waveform_times = waveform_construct(m1,m2,inc,e0,D,freqs_sparse_on_CPU,f_low,f_high,initial_orbital_phase=initial_orbital_phase,logging=logging)
-
-    waveform_amp,waveform_phase,waveform_times = waveform_amp.get(),waveform_phase.get(),waveform_times.get()
-    ## Response
-    # Ensures we are masking out the frequencies below which f(t=0)
-    freq_mask = freqs_sparse>=f_low
-
-    # phi ref is an additional phase rotation which is not needed since we have applied all the rotations inside the waveform phase
-    phi_ref = 0.
-    beta = beta
-    lamda = lam
-    # Remember the psi in BBHx follows a different convention to that in Balrog
-    psi = psis
-    
-    # Run response through selected TDI channel
-    if TDIType == "AET":
-       TDITag = 'AET'
-    elif TDIType == 'XYZ':
-       TDITag = 'XYZ'    
-    else:
-       raise ValueError("TDIType must be 'AET', 'XYZ' for BBHx reponse ")
-    
-    response = LISATDIResponse(TDItag=TDITag)
-
-    C = numpy.cos(inc)
-
-    # Converting from h_plus to h_lm. 
-    BBHx_amp = np.asarray(-waveform_amp)/numpy.sqrt(5/(64*np.pi))
-
-    # Notice the lack of negative sign, I think this is internally handeled inside Balrog. 
-    BBHx_phase = waveform_phase
-
-
-    # Number of binaries currently hard set 1 
-    num_bin_all = 1
-
-    # Length of frequency array for computation 
-    length = freqs_sparse[freq_mask].shape[0]
-
-    # Only one harmonic for now 
-    num_modes = 1
-    
-    # params are amp, phase, tf, transferL1re, transferL1im, transferL2re, transferL2im, transferL3re, transferL3im
-    num_interp_params = 9 
-
-    # Dump everything in here, this is what is being used inside all the response functions 
-    out_buffer = numpy.zeros(num_interp_params*length*num_modes*num_bin_all)
-    out_buffer = out_buffer.reshape(num_interp_params, num_bin_all, num_modes, length)
-
-    # Fill in out buffer with amplitude, phase, t-f in SSB frame
-    out_buffer[0,0,0,:]= BBHx_amp
-    out_buffer[1,0,0,:]= np.asarray(BBHx_phase)
-    out_buffer[2,0,0,:]= np.asarray(waveform_times)
-    
-    out_buffer = out_buffer.flatten().copy()
-
-    dense_frequency_mask = freqs_dense>=f_low
-    dense_freqs_length = freqs_dense[dense_frequency_mask].size
-    
-    # Generate response 
-    response(freqs_sparse[freq_mask],
-                 inc,
-                 lam,
-                 beta,
-                 psi,
-                 phi_ref,
-                 length,
-                 out_buffer=out_buffer,
-                 modes = [(2,2)])
-
-    # setup interpolant
-    spline = CubicSplineInterpolant(
-        freqs_sparse[freq_mask],
-        out_buffer,
-        length=length,
-        num_interp_params=num_interp_params,
-        num_modes=num_modes,
-        num_bin_all=num_bin_all,
-        use_gpu=False,
-    )
-
-    interp_response = TemplateInterpFD(use_gpu=False)    
-    template_channels = interp_response(freqs_dense[dense_frequency_mask],spline.container,numpy.array([0]),numpy.array([T_obs]),freqs_sparse[freq_mask].size,num_modes,3)
-
-    # combine into one data stream
-    data_out = numpy.zeros((3, dense_freqs_length), dtype=complex)
-    for temp, start_i, length_i in zip(
-        template_channels,
-        interp_response.start_inds,
-        interp_response.lengths,
-    ):
-        data_out[:, start_i : start_i + length_i] = temp
-
-    
-    XYZ = numpy.zeros((3,freqs_dense.size),dtype=complex)
-    XYZ[:,dense_frequency_mask] = data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
-
-    return(XYZ)
-
-
-
 def find_f_low_and_run_balrog_response(params,freqs,f_high,T_obs,engine,TDIType,logging=False):
     '''
     Wrapper for waveform generation if the user wants to specify time to merger instead of f_low, uses rootfinding to find f_low and runs balrog_response.
+
+    Args:
+        params (list): List of parameters for the binary black hole waveform.
+        freqs (array): Array of frequencies at which to evaluate the waveform.
+        f_high (float): Upper frequency limit.
+        T_obs (float): Observation time.
+        engine (str): Engine to use for waveform generation.
+        TDIType (str): Type of Time Delay Interferometry (TDI) channel.
+        logging (bool, optional): Whether to enable logging. Defaults to False.
+
+    Returns:
+        numpy.ndarray: Array representing the response of the detector to the waveform.
+
+    Raises:
+        ValueError: If TDIType is not one of 'Michelson', 'Sagnac', 'Single', 'LowFrequency', or 'Acceleration'.
 
     TODO: Need to make a BBHx version of this 
     '''
