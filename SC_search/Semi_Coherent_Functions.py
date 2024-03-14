@@ -135,3 +135,4 @@ def upsilon_func(signal,data,psd_array,num_segments=1):
                         noise_weighted_inner_product(signal_segment,signal_segment,df,psd_segment,phase_maximize=True))))**2
 
     return(upsilon.item())
+

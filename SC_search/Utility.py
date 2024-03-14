@@ -25,11 +25,11 @@ def chirp_mass_eta_from_component_mass(m1, m2):
     Calculate the chirp mass and symmetric mass ratio from the component masses.
 
     Parameters:
-    m1 (float): Mass of the first component.
-    m2 (float): Mass of the second component.
+        m1 (float): Mass of the first component.
+        m2 (float): Mass of the second component.
 
     Returns:
-    tuple: A tuple containing the chirp mass and symmetric mass ratio.
+        tuple: A tuple containing the chirp mass and symmetric mass ratio.
         - mc (float): Chirp mass.
         - symmetric_mass_ratio (float): Symmetric mass ratio.
     """
