@@ -422,7 +422,7 @@ def balrog_response(params, freqs, f_high, T_obs, engine, TDIType, logging=False
     # Ensures we are masking out the frequencies below which f(t=0)
     freq_mask = freqs>=f_low
 
-    C = np.cos(inc)
+    C = numpy.cos(inc)
 
     # Seperating into waveform polarization (Correct splitting, does not agree with TaylorF2 in Balrog)
     h_plus_positive = -waveform_amp*(1+C**2)
