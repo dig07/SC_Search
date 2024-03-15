@@ -102,7 +102,7 @@ def semi_coherent_logl(signal,data,psd_array,d_inner_d,num_segments=1):
     return(logl.item())
 
 
-def upsilon_func(signal,data,psd_array,num_segments=1):
+def upsilon_func(signal,data,psd_array,df,num_segments=1):
     """
     Semi-coherent search statistic Upsilon from arXiv:1705.04259v2 eqn 67.
 
@@ -110,6 +110,7 @@ def upsilon_func(signal,data,psd_array,num_segments=1):
         signal (array-like): The signal model. Shape: (3,#FFTgrid).
         data (array-like): The data. Shape: (3,#FFTgrid).
         psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
+        df (float): Frequency step size (1/Tobs).
         num_segments (int, optional): The number of segments to split the signal into. Defaults to 1.
     Returns:
         float: The semi-coherent log likelihood

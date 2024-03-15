@@ -7,10 +7,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from .Swarm_class import Semi_Coherent_Model
-from Utility import TaylorF2Ecc_mc_eta_to_m1m2
+from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import upsilon_func
-from Noise import *
-from Waveforms import TaylorF2Ecc
+from .Noise import *
+from .Waveforms import TaylorF2Ecc
 import PySO
 
 class Search:
@@ -65,7 +65,7 @@ class Search:
         self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
         self.waveform_args = {'freqs_sparse':self.freqs_sparse,
                               'freqs_dense':self.freqs,
-                              'freqs_sparse_on_CPU':self.freqq_sparse_on_CPU,
+                              'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
                               'f_high':self.fmax,
                               'T_obs':self.T_obs,
                               'TDIType':'AET',
@@ -95,7 +95,7 @@ class Search:
         # Generating frequency grid (dense)
         self.df = 1/self.T_obs
 
-        self.freqs = cp.arrange(self.fmin,self.fmax,self.df) # On GPU
+        self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
         self.freqs_on_CPU = self.freqs.get() # On CPU
 
         self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU
@@ -162,7 +162,7 @@ class Search:
 
         # Include noise if asked for
         if include_noise == True:
-            noise = self.generate_noise_realisation 
+            noise = self.generate_noise_realisation()
             self.data = noise + self.injection_model
         else: 
             self.data = self.injection_model.copy()
@@ -219,7 +219,8 @@ if __name__=='__main__':
     # Frequency series parameters    
     frequency_series_dict = {'fmin':0.018,
                              'fmax':0.03,
-                             'T_obs':3*year_in_seconds}
+                             'T_obs':3*year_in_seconds,
+                             'downsampling_factor':1000}
 
     # Injection parameters
     source_parameters = [28.09555579546043,#mc [sm]
@@ -292,8 +293,7 @@ if __name__=='__main__':
 
 
 
-    PySO_kwargs = {'num_particles':500,
-                    'Omega':Omega,
+    PySO_kwargs = {'Omega':Omega,
                     'Phip':Phip,
                     'Phig':Phig,
                     'Mh_fraction':Mh_fraction,
@@ -315,7 +315,8 @@ if __name__=='__main__':
     Search_object = Search(frequency_series_dict, 
                  source_parameters, 
                  segment_ladder, 
-                 prior_bounds, 
+                 prior_bounds,
+                 500, 
                  PySO_kwargs, 
                  include_noise=True)
     
