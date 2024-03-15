@@ -249,9 +249,9 @@ if __name__=='__main__':
     
 
     Omega = [0.4,0.4,0.3,0.3,0.2,0.2]
-	Phip = [0.2,0.2,0.2,0.2,0.2,0.2]
-	Phig = [0.4,0.4,0.5,0.5,0.6,0.6]
-	Mh_fraction = [0.0,0.0,0.0,0.0,0.0,0.0]
+    Phip = [0.2,0.2,0.2,0.2,0.2,0.2]
+    Phig = [0.4,0.4,0.5,0.5,0.6,0.6]
+    Mh_fraction = [0.0,0.0,0.0,0.0,0.0,0.0]
 
     # Common arguments for every swarm in the hierarchical PySO
 
