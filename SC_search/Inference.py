@@ -229,5 +229,8 @@ class dynesty_inference():
 
         # Resample weighted samples.
         samples_equal = dyfunc.resample_equal(samples, weights)
+
+        # Save samples
+        np.savetxt('samples.txt',samples_equal)
         
         return(samples_equal)
