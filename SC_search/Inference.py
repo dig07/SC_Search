@@ -33,7 +33,7 @@ class dynesty_inference():
         self.source_parameters = source_parameters
                 
         self.prior_bounds = prior_bounds
-        self.prior_widths = np.ptp(priors_global,axis=1)
+        self.prior_widths = np.ptp(self.prior_bounds,axis=1)
         
         self.nlive = nlive
 
@@ -58,7 +58,7 @@ class dynesty_inference():
         # Generate signal or load the signal we will be searching for 
         if load_data_file == True:
             # Load in data
-            self.data = cp.asarray(np.loadtxt(data_file_name))
+            self.data = cp.asarray(np.load(data_file_name))
         else:
             # Generate injection data
             self.generate_injection_data(include_noise)
@@ -184,7 +184,7 @@ class dynesty_inference():
         model = self.waveform_func(params_transformed,**self.waveform_args)
 
         # Compute likelihood
-        logl = vanilla_log_likelihood(model,self.data,self.psd_array,self.df)
+        logl = vanilla_log_likelihood(model,self.data,self.df,self.psd_array)
 
         return logl
     
@@ -212,17 +212,16 @@ class dynesty_inference():
 
         return results
     
-    def resample_and_save(self,sampler):
+    def resample_and_save(self,results):
         '''
         Resamples the inference run to equal weighted samples and saves the results to a file.
         
         Args:
-            sampler (dynesty.NestedSampler): The sampler used to run the inference.
+            results (dynesty.results): The results from the inference run. 
         
         Returns:
             array: The resampled samples.
         '''
-        results = sampler.results
         # Extract sampling results.
         samples = results.samples  # samples
         weights = np.exp(results.logwt - results.logz[-1])  # normalized weights
