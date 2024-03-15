@@ -186,7 +186,7 @@ class Search:
         '''
 
         for segment in self.segment_ladder:
-	        print('Sense check log upsilon: ',upsilon_func(self.injection_model,self.data,self.psd_array,num_segments=segment),
+	        print('Sense check log upsilon: ',upsilon_func(self.injection_model,self.data,self.psd_array,self.df,num_segments=segment),
                'N at ',segment)
 
     
@@ -199,10 +199,11 @@ class Search:
                                                             self.prior_bounds,
                                                             self.data,
                                                             self.psd_array,
+                                                            self.df,
                                                             self.waveform_func,
                                                             self.waveform_args) for segment_number in self.segment_ladder]
         
-        PySO_search = PySO.HierarchicalSearch(self.Semi_Coherent_classes,
+        PySO_search = PySO.HierarchicalSwarmHandler(self.Semi_Coherent_classes,
                                 1,# Number of initial swarms
                                 self.PySO_num_particles,# Number of particles
                                 **self.PySO_kwargs)

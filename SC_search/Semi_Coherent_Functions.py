@@ -65,7 +65,7 @@ def equal_SNR_segmentation(model,psd,segment_number):
     return boundary_indexes
 
 
-def semi_coherent_logl(signal,data,psd_array,d_inner_d,num_segments=1):
+def semi_coherent_logl(signal,data,psd_array,d_inner_d,df,num_segments=1):
     """
     Semi-coherent log likelihood function for a given nunmber of segments
 
@@ -74,6 +74,7 @@ def semi_coherent_logl(signal,data,psd_array,d_inner_d,num_segments=1):
         data (array-like): The data. Shape: (3,#FFTgrid).
         psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
         d_inner_d (float): The inner product of the data with itself.
+        df (float): Frequency step size (1/Tobs).
         num_segments (int, optional): The number of segments to split the signal into. Defaults to 1.
     Returns:
         float: The semi-coherent log likelihood
@@ -132,7 +133,7 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
         data_segment = data_split[segment_index]
 
         #h_inner_d/sqrt(h_inner_h)
-        upsilon += (noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(cp.sqrt(
+        upsilon += (noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(
                         noise_weighted_inner_product(signal_segment,signal_segment,df,psd_segment,phase_maximize=True))))**2
 
     return(upsilon.item())
