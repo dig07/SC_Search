@@ -3,7 +3,8 @@ Utility file contains useful utility functions for the code.
 '''
 from .Semi_Coherent_Functions import noise_weighted_inner_product
 import numpy as np 
-
+try: 
+    import cupy as cp 
 def component_masses_from_chirp_eta(mchirp, eta):
     """
     Calculate the component masses of a binary system from the chirp mass and symmetric mass ratio.
@@ -57,3 +58,31 @@ def match(h1, h2, df, psd_array, phase_maximize=False):
     overlap = numerator / denominator
     
     return np.abs(overlap)
+
+def TaylorF2Ecc_mc_eta_to_m1m2(parameters):
+    '''
+    Parameter transforms are hardcoded in to:
+    - Polarization shift to match Balrog convention
+    - Mc,eta->m1,m2
+
+    Args:
+        parameters (array): Waveform parameters. 
+            parameters[0]: Mc
+            parameters[1]: eta
+            parameters[6]: polarization (BBHx convention)
+    
+    Returns:
+        parameters (array): Waveform parameters transformed to match Balrog convetion
+            parameters[0]: m1
+            parameters[1]: m2
+            parameters[6]: polarization (Balrog convention)
+    
+    '''
+
+    # Polarization convention (We are sticking to Balrog)
+    parameters[6] = -(parameters[6]-np.pi/2)
+    
+    # Mc,eta->m1,m2
+    parameters[0],parameters[1] = component_masses_from_chirp_eta(parameters[0],parameters[1])
+
+    return(parameters)

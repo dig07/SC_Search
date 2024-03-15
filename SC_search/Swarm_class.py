@@ -1,7 +1,7 @@
 import numpy as np
 import PySO
 from .Semi_Coherent_Functions import upsilon_func
-from .Utility import component_masses_from_chirp_eta
+from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 
 class Semi_Coherent_Model(PySO.Model):
     '''
@@ -20,10 +20,11 @@ class Semi_Coherent_Model(PySO.Model):
     'f_low',
     'e0']
 
-    def __init__(self,segment_number,data,psd_array,waveform_function,waveform_args=None):
+    def __init__(self,segment_number,priors,data,psd_array,waveform_function,waveform_args=None):
         '''
         Args:
             segment_number (int): The segment number of the semi-coherent search.
+            priors (dict): The priors bounds for the model. 
             data (array-like): The data. Shape: (3,#FFTgrid).
             psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
             waveform_function (function): The waveform function to be used.
@@ -31,6 +32,7 @@ class Semi_Coherent_Model(PySO.Model):
         
         '''
         self.segment_number = segment_number
+        self.bounds = priors
         self.data = data
         self.psd_array = psd_array
         self.waveform = waveform_function
@@ -56,12 +58,8 @@ class Semi_Coherent_Model(PySO.Model):
         # Convert parameters from dict to array 
         parameters_array = np.array([params[key] for key in list(params.keys())])
 
-        # Polarization convention (We are sticking to Balrog)
-        parameters_array[6] = -(parameters_array[6]-np.pi/2)
+        parameters_array = TaylorF2Ecc_mc_eta_to_m1m2(parameters_array)
         
-        # Mc,eta->m1,m2
-        parameters_array[0],parameters_array[1] = component_masses_from_chirp_eta(parameters_array[0],parameters_array[1])
-
         model = self.waveform(parameters_array,**self.waveform_args)
 
         func_vals = upsilon_func(model,self.data,self.psd_array,num_segments=self.segment_number)
