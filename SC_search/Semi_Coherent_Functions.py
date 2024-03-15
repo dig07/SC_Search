@@ -138,3 +138,22 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
 
     return(upsilon.item())
 
+def vanilla_log_likelihood(signal,data,df,psd_array):
+    """
+    Standard Gaussian likelihood function. 
+
+    Args:
+        signal (array-like): The signal model. Shape: (3,#FFTgrid).
+        data (array-like): The data. Shape: (3,#FFTgrid).
+        psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
+
+    Returns:
+        float: The standard Gaussian log likelihood
+    
+    """
+
+    res = data - signal 
+
+    logl = -1/2*noise_weighted_inner_product(res,res,df,psd_array,phase_maximize=False)#
+
+    return(logl.item())
