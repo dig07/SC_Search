@@ -16,7 +16,10 @@ import dynesty
 from dynesty import utils as dyfunc
 
 class dynesty_inference():
-    
+    '''
+    Performs inference on the vanilla likelihood 
+    - Harcoded to all the same thing the Search is for now
+    '''
 
     def __init__(self, 
                     frequency_series_dict, 
@@ -24,10 +27,21 @@ class dynesty_inference():
                     source_parameters,
                     nlive,
                     load_data_file=True,
-                    data_file_name = None, 
+                    data_file_name=None, 
                     include_noise=False):
+        '''
+        Initialize the Inference object.
 
-        
+        Args:
+            frequency_series_dict (dict): A dictionary containing frequency series data.
+            prior_bounds (numpy.ndarray): An array of prior bounds.
+            source_parameters (numpy.ndarray): An array of source parameters.
+            nlive (int): The number of live points for the nested sampling algorithm.
+            load_data_file (bool): Whether to load a data file or generate injection data.
+            data_file_name (str): The name of the data file to load.
+            include_noise (bool): Whether to include noise in the generated injection data.
+        '''
+
         self.frequency_series_dict = frequency_series_dict
 
         self.source_parameters = source_parameters
@@ -173,7 +187,7 @@ class dynesty_inference():
         The likelihood function for the search. 
 
         Args:
-            parameters (dict): The parameters for the model. 
+            parameters (array): The parameters for the model. 
 
         Returns:
             float: The log likelihood. 
