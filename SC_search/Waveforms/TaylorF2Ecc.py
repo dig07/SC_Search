@@ -433,12 +433,12 @@ def balrog_response(params, freqs, f_high, T_obs, engine, TDIType, logging=False
     N = freqs[freq_mask].size
     n_harmonics = numpy.zeros([1],dtype=numpy.int32, order='C')
     n_points = N* numpy.ones([1, 1], dtype=numpy.int32, order='C')
-    frequency = numpy.zeros([1, 1, N], dtype=numpy.float, order='C')
-    time = numpy.zeros([1, 1,N], dtype=numpy.float, order='C')
+    frequency = numpy.zeros([1, 1, N], dtype=float, order='C')
+    time = numpy.zeros([1, 1,N], dtype=float, order='C')
 
     hplus = numpy.zeros([1, 1, h_plus_positive.size], dtype=complex, order='C')
     hcross = numpy.zeros([1, 1, h_cross_positive.size], dtype=complex, order='C')
-    phase = numpy.zeros([1, 1, waveform_phase.size], dtype=numpy.float, order='C')
+    phase = numpy.zeros([1, 1, waveform_phase.size], dtype=float, order='C')
 
     n_harmonics[0] = 1 
     frequency[0,0,:] = freqs[freq_mask].copy()
