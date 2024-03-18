@@ -1,7 +1,7 @@
 try: 
     import cupy as cp 
 except ImportError:
-    print('Cupy not installed, search')
+    print('Cupy not installed, search wont work')
 import numpy as np 
 
 import matplotlib.pyplot as plt
@@ -24,6 +24,7 @@ class Search:
                  source_parameters, 
                  segment_ladder, 
                  prior_bounds,
+                 PySO_num_swarms,
                  PySO_num_particles,  
                  PySO_kwargs, 
                  include_noise=True):
@@ -37,6 +38,7 @@ class Search:
             segment_ladder (list): A list of segment ladder values for the semi-coherent search.
             prior_bounds (list): A list of prior bounds for the search
             PySO_num_particles (int): The number of particles to be used in the PySO search.
+            PySO_num_swarms (int): The initial number of swarms to be used in the PySO search.
             PySO_kwargs (dict): A dictionary containing PySO keyword arguments.
             include_noise (bool, optional): A flag indicating whether to include noise. Defaults to True.
         '''
@@ -50,6 +52,8 @@ class Search:
         self.prior_bounds = prior_bounds
         
         self.PySO_num_particles = PySO_num_particles
+
+        self.PySO_num_swarms = PySO_num_swarms
 
         self.PySO_kwargs = PySO_kwargs
 
@@ -204,7 +208,7 @@ class Search:
                                                             self.waveform_args) for segment_number in self.segment_ladder]
         
         PySO_search = PySO.HierarchicalSwarmHandler(self.Semi_Coherent_classes,
-                                1,# Number of initial swarms
+                                self.PySO_num_swarms,# Number of initial swarms
                                 self.PySO_num_particles,# Number of particles
                                 **self.PySO_kwargs)
 
