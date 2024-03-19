@@ -38,7 +38,8 @@ class Search:
         Parameters:
             frequency_series_dict (dict): A dictionary containing frequency series data. Also contains information about the LISA mission such as
                 time of observation etc. 
-            source_parameters (dict): A dictionary containing source parameters for the true injection. Can be list of lists for multiple sources.
+            source_parameters (list): A dictionary containing source parameters for the true injection. Should be a nested list. Every item in this list
+                is a new source. 
             segment_ladder (list): A list of segment ladder values for the semi-coherent search.
             prior_bounds (list): A list of prior bounds for the search
             PySO_num_particles (int): The number of particles to be used in the PySO search.
@@ -164,7 +165,7 @@ class Search:
 
         print('Data contains'+ num_sources+' sources!')
 
-        self.injection = cp.zeros_like((3,self.freqs),dtype=cp.complex)
+        self.injection = cp.zeros((3,self.freqs),dtype=cp.complex)
 
         for source in self.source_parameters:
 
