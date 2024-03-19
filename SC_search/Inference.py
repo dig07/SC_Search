@@ -1,7 +1,7 @@
 try: 
     import cupy as cp 
 except ImportError:
-    print('Cupy not installed, search')
+    print('Cupy not installed, search wont work')
 import numpy as np 
 
 import matplotlib.pyplot as plt

@@ -3,7 +3,7 @@ try:
     import cupy as np 
 except ImportError:
     import numpy as np
-
+import math
 
 def noise_weighted_inner_product(a, b, df, psd, phase_maximize=False):
     """

@@ -1,7 +1,7 @@
 try: 
     import cupy as cp 
 except ImportError:
-    print('Cupy not installed, search wont work')
+    print('Cupy not installed, search (on full FFT grid) wont work')
 import numpy as np 
 
 import matplotlib.pyplot as plt
@@ -12,6 +12,8 @@ from .Semi_Coherent_Functions import upsilon_func
 from .Noise import *
 from .Waveforms import TaylorF2Ecc
 import PySO
+from .Veto import *
+
 
 class Search:
     '''
@@ -27,20 +29,24 @@ class Search:
                  PySO_num_swarms,
                  PySO_num_particles,  
                  PySO_kwargs, 
-                 include_noise=True):
+                 include_noise=True,
+                 load_data_file = False
+                 data_file_name = None):
         '''
         Initializes a new instance of the Search class.
 
         Parameters:
             frequency_series_dict (dict): A dictionary containing frequency series data. Also contains information about the LISA mission such as
                 time of observation etc. 
-            source_parameters (dict): A dictionary containing source parameters for the true injection.
+            source_parameters (dict): A dictionary containing source parameters for the true injection. Can be list of lists for multiple sources.
             segment_ladder (list): A list of segment ladder values for the semi-coherent search.
             prior_bounds (list): A list of prior bounds for the search
             PySO_num_particles (int): The number of particles to be used in the PySO search.
             PySO_num_swarms (int): The initial number of swarms to be used in the PySO search.
             PySO_kwargs (dict): A dictionary containing PySO keyword arguments.
             include_noise (bool, optional): A flag indicating whether to include noise. Defaults to True.
+            load_data (bool, optional): A flag indicating whether to load the data to be searched over. 
+            data_file_name (str, optional): The name of the file containing the data to be searched over.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -75,11 +81,16 @@ class Search:
                               'TDIType':'AET',
                               'logging': False}
 
-        # Generate signal we will be searching for 
-        self.generate_injection_data(include_noise)
-
-        # Check upsilons values for the injection 
-        self.check_upsilons()
+        # Generate signal or load the signal we will be searching for 
+        if load_data_file == True:
+            # Load in data
+            self.data = cp.asarray(np.load(data_file_name))
+        else:
+            # Generate injection data
+            self.generate_injection_data(include_noise)
+            # Check upsilons values for the injection 
+                # Only do this for not-loaded in data as we can isolate the noise and the signal
+            self.check_upsilons()
 
 
     def generate_frequency_grids(self,):
@@ -149,27 +160,36 @@ class Search:
             include_noise (bool, optional): A flag indicating whether to include noise. Defaults to True.
         
         '''
-        
-        # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
-        source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(self.source_parameters)
-        
-        # Turn logging on for the injection waveform so we can debug statements 
-        injection_waveform_args = self.waveform_args.copy()
-        injection_waveform_args['logging'] = True
-        
-        # Generate noiseless signal
-        self.injection_model = self.waveform_func(source_parameters_transformed,**injection_waveform_args)
+        num_sources = len(self.source_parameters)
 
-        # Print SNR of injection signal
-        self.injection_SNR = cp.sqrt(4*cp.real(cp.sum((self.injection_model*self.injection_model.conj()/self.psd_array*self.df)))).item()
-        print('SNR of injection signal:',self.injection_SNR)
+        print('Data contains'+ num_sources+' sources!')
+
+        self.injection = cp.zeros_like((3,self.freqs),dtype=cp.complex)
+
+        for source in self.source_parameters:
+
+            # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
+            source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source)
+            
+            # Turn logging on for the injection waveform so we can debug statements 
+            injection_waveform_args = self.waveform_args.copy()
+            injection_waveform_args['logging'] = True
+            
+            # Generate noiseless signal
+            signal= self.waveform_func(source_parameters_transformed,**injection_waveform_args)
+
+            # Print SNR of injection signal
+            injection_SNR = cp.sqrt(4*cp.real(cp.sum((signal*signal.conj()/self.psd_array*self.df)))).item()
+            print('SNR of signal:',injection_SNR)
+
+            self.injection += signal
 
         # Include noise if asked for
         if include_noise == True:
             noise = self.generate_noise_realisation()
-            self.data = noise + self.injection_model
+            self.data = noise + self.injection
         else: 
-            self.data = self.injection_model.copy()
+            self.data = self.injection.copy()
 
         # Save data 
         self.cupy_to_numpy_save(self.data,'data.npy')
@@ -190,9 +210,35 @@ class Search:
         '''
 
         for segment in self.segment_ladder:
-	        print('Sense check log upsilon: ',upsilon_func(self.injection_model,self.data,self.psd_array,self.df,num_segments=segment),
+	        print('Sense check log upsilon: ',upsilon_func(self.injection,self.data,self.psd_array,self.df,num_segments=segment),
                'N at ',segment)
 
+    def veto_function(self,parameters,best_upsilon_value,segment_number):
+        '''
+        Veto function for the search.  
+
+        FUNCTION NOT YET USED. 
+
+        Args:
+            parameters (array-like): The parameters for the model at the location to be veto-checked.
+            best_upsilon_value (float): The value of the search statistic at this location in parameter space.
+            segment_number (int): The segment number for the model.
+        Returns:
+            veto (Boolean): A flag indicating whether the peak is vetoed or not. 
+        '''
+                
+        # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
+        source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(parameters)
+    
+        # Generate waveform
+        veto_waveform = self.waveform_func(source_parameters_transformed,**self.waveform_args)
+
+        # Print SNR of injection signal
+        veto_SNR = cp.sqrt(4*cp.real(cp.sum((veto_waveform*veto_waveform.conj()/self.psd_array*self.df)))).item()
+
+        theoretical_pf = false_alarm_rate(best_upsilon_value,veto_SNR,segment_number)
+        
+        pass
     
     def initialize_and_run_search(self,):
         """
