@@ -3,6 +3,7 @@ Utility file contains useful utility functions for the code.
 '''
 from .Semi_Coherent_Functions import noise_weighted_inner_product
 import numpy as np 
+
 def component_masses_from_chirp_eta(mchirp, eta):
     """
     Calculate the component masses of a binary system from the chirp mass and symmetric mass ratio.

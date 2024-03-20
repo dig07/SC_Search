@@ -30,7 +30,7 @@ class Search:
                  PySO_num_particles,  
                  PySO_kwargs, 
                  include_noise=True,
-                 load_data_file = False
+                 load_data_file = False,
                  data_file_name = None):
         '''
         Initializes a new instance of the Search class.

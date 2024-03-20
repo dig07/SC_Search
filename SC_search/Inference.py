@@ -1,7 +1,7 @@
 try: 
     import cupy as cp 
 except ImportError:
-    print('Cupy not installed, search wont work')
+    print('Cupy not installed, Inference (on full FFT grid) wont work')
 import numpy as np 
 
 import matplotlib.pyplot as plt
