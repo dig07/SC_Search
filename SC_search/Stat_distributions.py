@@ -223,11 +223,11 @@ class Distributions:
         plt.figure(figsize=(12,7))
         
         #  <signal| signal + noise>
-        plt.hist(s_s_n,density=True,histtype='step',color='r',label=r'$\langle s|s+n \rangle$ N='+str(num_segments),bins=50)
+        plt.hist(s_s_n,density=True,histtype='step',color='r',label=r'$\Upsilon(s,s+n)$ N='+str(num_segments),bins=50)
         plt.plot(x_range_s_s_n,theoretical_s_s_n,linestyle='--',label=r'$\mathcal{N}(N\mu_k+\rho^2,2N\sigma_k^2+4\rho^2)$',lw=2,color='r')
         
         # <signal| noise>
-        plt.hist(s_n,density=True,histtype='step',color='g',label=r'$\langle s|n \rangle$ N='+str(num_segments),bins=50)
+        plt.hist(s_n,density=True,histtype='step',color='g',label=r'$\Upsilon(s|n)$ N='+str(num_segments),bins=50)
         plt.plot(x_range_s_n,theoretical_s_n,linestyle='--',label=r'$\mathcal{N}(N \mu_k,2N\sigma^2_k)$',lw=2,color='g')    
     
         plt.xlabel(r'$\Upsilon$')

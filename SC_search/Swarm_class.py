@@ -11,16 +11,17 @@ class Semi_Coherent_Model(PySO.Model):
 
     names = ['Mc',
     'eta',
-    'D',
+    # 'D',
     'beta',
     'lambda',
     'inc',#cos(i)
     'polarization',
-    'Initial orbital phase',
+    # 'Initial orbital phase',
     'f_low',
     'e0']
 
-    def __init__(self,segment_number,priors,data,psd_array,df,waveform_function,waveform_args=None):
+    def __init__(self,segment_number,priors,data,psd_array,df,waveform_function,
+                 constant_initial_orbital_phase= 0, constant_distance=100.e+6, waveform_args=None):
         '''
         Args:
             segment_number (int): The segment number of the semi-coherent search.
@@ -29,6 +30,8 @@ class Semi_Coherent_Model(PySO.Model):
             psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
             df (float): Frequency step size (1/Tobs).
             waveform_function (function): The waveform function to be used.
+            constant_initial_orbital_phase (float, optional): The constant initial orbital phase. Defaults to 0.
+            constant_distance (float, optional): The constant distance. Defaults to 100.e+6.
             waveform_args (dict, optional): The arguments for the waveform function. Defaults to None.
         
         '''
@@ -39,6 +42,11 @@ class Semi_Coherent_Model(PySO.Model):
         self.df = df 
         self.waveform = waveform_function
         self.waveform_args = waveform_args
+
+        # We hold  initial orbital phase and distance fixed as distance factors out in the search statistic,
+        #    and initial orbital phase is unmeasured due to the semi-coherent phase maximsation 
+        self.constant_initial_orbital_phase = constant_initial_orbital_phase
+        self.constant_distance = constant_distance
 
     def log_likelihood(self, params):
         '''
@@ -57,9 +65,13 @@ class Semi_Coherent_Model(PySO.Model):
             float: The log likelihood (Any quantity to be optimised).
         
         '''
-        # Convert parameters from dict to array 
-        parameters_array = np.array([params[key] for key in list(params.keys())])
+        # Convert parameters from dict to list 
+        parameters_array = [params[key] for key in list(params.keys())]
 
+        # Add in distance and orbital phase so we can generate the waveform
+        parameters_array.insert(2,self.constant_distance)
+        parameters_array.insert(7,self.constant_initial_orbital_phase)
+        
         parameters_array = TaylorF2Ecc_mc_eta_to_m1m2(parameters_array)
         
         model = self.waveform(parameters_array,**self.waveform_args)
