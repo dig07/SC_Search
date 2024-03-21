@@ -14,7 +14,7 @@ setuptools.setup(
     url="https://github.com/dig07/SC_Search",
     packages=setuptools.find_packages(),
     python_requires='>=3',
-    install_requires=['numpy', 'scipy', 'matplotlib','scikit-learn','pathos','dill'],
+    install_requires=['numpy', 'scipy', 'matplotlib','scikit-learn','pathos','dill','scienceplots'],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

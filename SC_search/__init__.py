@@ -5,5 +5,6 @@ from . import Utility
 from . import Waveforms
 from . import Inference
 from . import Veto
+from . import Stat_distributions
 if __name__=='__main__':
     pass
