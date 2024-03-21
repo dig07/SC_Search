@@ -163,9 +163,9 @@ class Search:
         '''
         num_sources = len(self.source_parameters)
 
-        print('Data contains'+ num_sources+' sources!')
+        print('Data contains '+ str(num_sources)+' sources!')
 
-        self.injection = cp.zeros((3,self.freqs),dtype=cp.complex)
+        self.injection = cp.zeros((3,self.freqs.size),dtype=cp.complex)
 
         for source in self.source_parameters:
 
