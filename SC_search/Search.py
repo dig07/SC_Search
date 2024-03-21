@@ -304,7 +304,7 @@ class Post_Search_Inference:
                  prior_bounds, 
                  data_file_name,
                  swarm_directory,
-                 PySO_MMCMC_kwargs):
+                 PySO_MCMC_kwargs):
         '''
         Initializes a new instance of the Post Search Inference class.
 
@@ -314,14 +314,14 @@ class Post_Search_Inference:
             prior_bounds (list): A list of prior bounds for the inference
             data_file_name (str): The name of the file containing the data.
             swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
-            PySO_MMCMC_kwargs (dict): A dictionary containing PySO MMCMC keyword arguments.
+            PySO_MCMC_kwargs (dict): A dictionary containing PySO MMCMC keyword arguments.
         '''
 
         self.frequency_series_dict = frequency_series_dict
         
         self.prior_bounds = prior_bounds
 
-        self.PySO_kwargs = PySO_MMCMC_kwargs
+        self.PySO_MCMC_kwargs = PySO_MCMC_kwargs
 
         # Generate CPU and GPU frequency grids
         self.generate_frequency_grids()
@@ -345,7 +345,11 @@ class Post_Search_Inference:
         self.swarm_directory = swarm_directory
 
         # Load positions from final iteration of the search for one swarm
+            # Note this does not include distances!!! Since the search statistic does not search over that
         self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:,3:-3]
+
+        # Draw distances from prior and insert into initial positions
+        self.draw_distances_from_prior()
 
     def generate_frequency_grids(self,):
         '''
@@ -386,9 +390,19 @@ class Post_Search_Inference:
 
         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
     
+    def draw_distances_from_prior(self,):
+        '''
+        Draws a distances from the prior and fills it into the initial guesses for the inference. 
+            As the search does not search over distance, this is a necessary step. 
+        '''
+        distance_draws = np.random.uniform(self.prior_bounds[2][0],self.prior_bounds[2][1],size=(self.initial_positions.shape[0]))
+        
+        # Insert distances into the correct index of the initial positions
+        self.initial_positions = np.insert(self.initial_positions,2,distance_draws,axis=1)
+
     def initialize_and_run_inference(self,):
         '''
-        
+        Initializes and runs the inference on the results of the search
         '''
         Coherent_phase_maximised_inference_model = Semi_Coherent_Model_Inference(
                                                             self.prior_bounds,
@@ -398,17 +412,12 @@ class Post_Search_Inference:
                                                             self.waveform_func,
                                                             segment_number = 1,
                                                             waveform_args=self.waveform_args)
+        
         sampler = PySO.Swarm(Coherent_phase_maximised_inference_model,
                         self.initial_positions.shape[0], # Num particless
                         Initialguess = self.initial_positions, # Initial guess
                         Output = self.swarm_directory,
-                        Verbose = True,
-                        Nperiodiccheckpoint = 1, # Final two args mean evolution is saved at every iteration. Only necessary if running myswarm.Plot()
-                        Saveevolution = True,    ############
-                        Nthreads=5,
-                        Tol = 1.0e-2,
-                        Omega = 0., Phip = 0., Phig = 0., Mh_fraction=1.,
-                        Maxiter=20,)
+                        **self.PySO_MCMC_kwargs)
 
         sampler.Run()
 
@@ -526,3 +535,14 @@ if __name__=='__main__':
     
     Search_object.initialize_and_run_search()
     
+
+    PySO_MCMC_kwargs= {'Verbose':True,
+                        'Nperiodiccheckpoint':1, # Final two args mean evolution is saved at every iteration. Only necessary if running myswarm.Plot()
+                        'Saveevolution':True,    ############
+                        'Nthreads':5,
+                        'Tol':1.0e-2,
+                        'Omega':0., 
+                        'Phip':0., 
+                        'Phig':0., 
+                        'Mh_fraction':1.,
+                        'Maxiter':20,}

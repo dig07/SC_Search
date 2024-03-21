@@ -102,7 +102,7 @@ class Semi_Coherent_Model_Inference(PySO.Model):
                  constant_initial_orbital_phase= 0, waveform_args=None):
         '''
         Args:
-            priors (dict): The priors bounds for the inference. 
+            priors (list): The priors bounds for the inference. 
             data (array-like): The data. Shape: (3,#FFTgrid).
             psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
             df (float): Frequency step size (1/Tobs).
