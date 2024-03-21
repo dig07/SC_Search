@@ -5,8 +5,10 @@ except ImportError:
 import numpy as np 
 
 import matplotlib.pyplot as plt
+import pandas as pd
+import os
 
-from .Swarm_class import Semi_Coherent_Model
+from .Swarm_class import Semi_Coherent_Model, Semi_Coherent_Model_Inference
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import upsilon_func
 from .Noise import *
@@ -261,7 +263,155 @@ class Search:
 
         PySO_search.Run()
 
-# Need to incorporate Vetos into this function and into PySO
+    def postprocess_seperate_inferences(self,):
+        '''
+        Read in the results of the PySO_search and seperate into multiple folders where inferences for each will be done. 
+        '''
+        # Directory where all the PySO results are dumped
+        Swarm_results_file =  pd.read_csv(self.PySO_kwargs['Output']+'/EnsembleEvolutionHistory.dat')
+
+        # Find interation number of final iteration
+        final_iteration = np.sort(np.unique(Swarm_results_file['IterationNumber']))[-1]
+
+        # Find final state
+        df_subset_final_iteration = Swarm_results_file[Swarm_results_file['IterationNumber'] == final_iteration]
+
+        # Unique swarms in the final state of the search
+        unique_swarm_numbers = np.unique(df_subset_final_iteration['swarm_number'])
+
+        # For each swarm, create a directory and dump the results of the swarms final positions in there
+        for swarm_num in unique_swarm_numbers: 
+            os.mkdir('Swarm_'+str(swarm_num)+'_inference')
+        
+            # Find the final positions of the swarm
+            final_positions = df_subset_final_iteration[Swarm_results_file['swarm_number'] == swarm_num]
+
+            # Save the final positions of the swarm
+            final_positions.to_csv('Swarm_'+str(swarm_num)+'_inference/final_positions.csv')
+
+
+class Post_Search_Inference:
+    '''
+    Class to perform inference on the results of the search.
+        Each swarm from the search is loaded in and inference is performed on it using the 
+        Affine-invariance MCMC sampling algorithm implemented within PySO.
+
+    Harcoded to the N-1, phase maximised coherent log likelihood. 
+
+    '''        
+    def __init__(self, 
+                 frequency_series_dict, 
+                 prior_bounds, 
+                 data_file_name,
+                 swarm_directory,
+                 PySO_MMCMC_kwargs):
+        '''
+        Initializes a new instance of the Post Search Inference class.
+
+        Parameters:
+            frequency_series_dict (dict): A dictionary containing frequency series data. Also contains information about the LISA mission such as
+                time of observation etc. 
+            prior_bounds (list): A list of prior bounds for the inference
+            data_file_name (str): The name of the file containing the data.
+            swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
+            PySO_MMCMC_kwargs (dict): A dictionary containing PySO MMCMC keyword arguments.
+        '''
+
+        self.frequency_series_dict = frequency_series_dict
+        
+        self.prior_bounds = prior_bounds
+
+        self.PySO_kwargs = PySO_MMCMC_kwargs
+
+        # Generate CPU and GPU frequency grids
+        self.generate_frequency_grids()
+
+        # Generate PSD
+        self.generate_psd()
+
+        # Search is being tuned for these so hardcoded for now
+        self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+        self.waveform_args = {'freqs_sparse':self.freqs_sparse,
+                              'freqs_dense':self.freqs,
+                              'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
+                              'f_high':self.fmax,
+                              'T_obs':self.T_obs,
+                              'TDIType':'AET',
+                              'logging': False}
+
+        # Load in data
+        self.data = cp.asarray(np.load(data_file_name))
+
+        self.swarm_directory = swarm_directory
+
+        # Load positions from final iteration of the search for one swarm
+        self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:,3:-3]
+
+    def generate_frequency_grids(self,):
+        '''
+        Generates the dense and sparse frequency grids for search. 
+        Stores both on CPU and GPU.         
+        '''
+
+        # Initialising values for frequency grid
+        self.fmin = self.frequency_series_dict['fmin']
+        self.fmax = self.frequency_series_dict['fmax']
+        self.T_obs = self.frequency_series_dict['T_obs']
+
+        # Downsampling factor is used for the sparse frequency grid for interpolation
+        self.downsampling_factor = self.frequency_series_dict['downsampling_factor']
+
+        # Generating frequency grid (dense)
+        self.df = 1/self.T_obs
+
+        self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
+        self.freqs_on_CPU = self.freqs.get() # On CPU
+
+        self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU
+
+        self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
+
+    def generate_psd(self,):
+        '''
+        Generates the PSD for the search.
+
+        - Harcoded to Michelson PSD for now 
+        '''
+        # Generate the PSD
+        Sdisp = Sdisp_SciRD(self.freqs_on_CPU)
+        Sopt = Sopt_SciRD(self.freqs_on_CPU)
+        self.psd_A = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
+        self.psd_E = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
+        self.psd_T = psd_TX(self.freqs_on_CPU,Sdisp,Sopt)
+
+        self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
+    
+    def initialize_and_run_inference(self,):
+        '''
+        
+        '''
+        Coherent_phase_maximised_inference_model = Semi_Coherent_Model_Inference(
+                                                            self.prior_bounds,
+                                                            self.data,
+                                                            self.psd_array,
+                                                            self.df,
+                                                            self.waveform_func,
+                                                            segment_number = 1,
+                                                            waveform_args=self.waveform_args)
+        sampler = PySO.Swarm(Coherent_phase_maximised_inference_model,
+                        self.initial_positions.shape[0], # Num particless
+                        Initialguess = self.initial_positions, # Initial guess
+                        Output = self.swarm_directory,
+                        Verbose = True,
+                        Nperiodiccheckpoint = 1, # Final two args mean evolution is saved at every iteration. Only necessary if running myswarm.Plot()
+                        Saveevolution = True,    ############
+                        Nthreads=5,
+                        Tol = 1.0e-2,
+                        Omega = 0., Phip = 0., Phig = 0., Mh_fraction=1.,
+                        Maxiter=20,)
+
+        sampler.Run()
+
 
 if __name__=='__main__':
 

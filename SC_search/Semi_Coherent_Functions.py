@@ -65,7 +65,7 @@ def equal_SNR_segmentation(model,psd,segment_number):
     return boundary_indexes
 
 
-def semi_coherent_logl(signal,data,psd_array,d_inner_d,df,num_segments=1):
+def semi_coherent_logl(signal,data,psd_array,df,d_inner_d,num_segments=1):
     """
     Semi-coherent log likelihood function for a given nunmber of segments
 
@@ -73,8 +73,8 @@ def semi_coherent_logl(signal,data,psd_array,d_inner_d,df,num_segments=1):
         signal (array-like): The signal model. Shape: (3,#FFTgrid).
         data (array-like): The data. Shape: (3,#FFTgrid).
         psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
-        d_inner_d (float): The inner product of the data with itself.
         df (float): Frequency step size (1/Tobs).
+        d_inner_d (float): The inner product of the data with itself.
         num_segments (int, optional): The number of segments to split the signal into. Defaults to 1.
     Returns:
         float: The semi-coherent log likelihood
