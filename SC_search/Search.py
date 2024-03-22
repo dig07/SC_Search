@@ -422,12 +422,9 @@ class Post_Search_Inference:
         sampler.Run()
 
         # Save samples 
-        np.savetxt(sampler.Points, self.swarm_directory+'/posterior_samples.dat')
+        np.savetxt(self.swarm_directory+'/posterior_samples.dat',sampler.Points) 
 
 
-        # Generate corner plot and save (Note no postprocessing has been applied, such as thinning, burn-in removal etc.)
-        corner.corner(sampler.Points,labels=Coherent_phase_maximised_inference_model.names,quantiles=[0.16, 0.5, 0.84],show_titles=True)
-        plt.savefig('Corner_plot.pdf')
 
 
 if __name__=='__main__':
