@@ -121,7 +121,7 @@ class Semi_Coherent_Model_Inference(PySO.Model):
         self.waveform_args = waveform_args
 
         # Inner product of data with itself for the inference log likelihood
-        self.d_inner_d = noise_weighted_inner_product(self.data, self.data, self.df, self.psd, phase_maximize=False).item()
+        self.d_inner_d = noise_weighted_inner_product(self.data, self.data, self.df, self.psd_array, phase_maximize=False).item()
 
         # Hold the initial orbital phase fixed as it is unmeasured due to the semi-coherent phase maximisation at N=1
         self.constant_initial_orbital_phase = constant_initial_orbital_phase
