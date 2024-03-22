@@ -15,7 +15,7 @@ from .Noise import *
 from .Waveforms import TaylorF2Ecc
 import PySO
 from .Veto import *
-
+import corner 
 
 class Search:
     '''
@@ -281,13 +281,13 @@ class Search:
 
         # For each swarm, create a directory and dump the results of the swarms final positions in there
         for swarm_num in unique_swarm_numbers: 
-            os.mkdir('Swarm_'+str(swarm_num)+'_inference')
+            os.mkdir('Swarm_'+str(swarm_num+1)+'_inference')
         
             # Find the final positions of the swarm
             final_positions = df_subset_final_iteration[Swarm_results_file['swarm_number'] == swarm_num]
 
             # Save the final positions of the swarm
-            final_positions.to_csv('Swarm_'+str(swarm_num)+'_inference/final_positions.csv')
+            final_positions.to_csv('Swarm_'+str(swarm_num+1)+'_inference/final_positions.csv')
 
 
 class Post_Search_Inference:
@@ -420,6 +420,14 @@ class Post_Search_Inference:
                         **self.PySO_MCMC_kwargs)
 
         sampler.Run()
+
+        # Save samples 
+        np.savetxt(sampler.Points, self.swarm_directory+'/posterior_samples.dat')
+
+
+        # Generate corner plot and save (Note no postprocessing has been applied, such as thinning, burn-in removal etc.)
+        corner.corner(sampler.Points,labels=Coherent_phase_maximised_inference_model.names,quantiles=[0.16, 0.5, 0.84],show_titles=True)
+        plt.savefig('Corner_plot.pdf')
 
 
 if __name__=='__main__':
