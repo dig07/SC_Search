@@ -33,7 +33,8 @@ class Search:
                  PySO_kwargs, 
                  include_noise=True,
                  load_data_file = False,
-                 data_file_name = None):
+                 data_file_name = None,
+                 noise_only_injection = False):
         '''
         Initializes a new instance of the Search class.
 
@@ -50,6 +51,7 @@ class Search:
             include_noise (bool, optional): A flag indicating whether to include noise. Defaults to True.
             load_data (bool, optional): A flag indicating whether to load the data to be searched over. 
             data_file_name (str, optional): The name of the file containing the data to be searched over.
+            noise_only_injection (bool, optional): A flag indicating whether to inject noise only. Defaults to False.  
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -88,7 +90,10 @@ class Search:
         if load_data_file == True:
             # Load in data
             self.data = cp.asarray(np.load(data_file_name))
-        else:
+        elif noise_only_injection == True and load_data_file == False:
+            # Generate data containing only noise
+            self.data = self.generate_noise_realisation()
+        elif noise_only_injection == False and load_data_file == False:
             # Generate injection data
             self.generate_injection_data(include_noise)
             # Check upsilons values for the injection 
