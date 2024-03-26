@@ -157,3 +157,65 @@ def vanilla_log_likelihood(signal,data,df,psd_array):
     logl = -1/2*noise_weighted_inner_product(res,res,df,psd_array,phase_maximize=False)#
 
     return(logl.item())
+
+
+def upsilon_func_masking(signal,data,psd_array,df,num_segments=1):
+    """
+    Semi-coherent search statistic Upsilon from arXiv:1705.04259v2 eqn 67.
+    Using array masking to avoid for loops. 
+
+    Note: This function becomes faster than the for loop implementation when the number of segments is large.
+        At low number of segments this is actually slower than the for loop implementation: upislon_func.
+
+    Args:
+        signal (array-like): The signal model. Shape: (3,#FFTgrid).
+        data (array-like): The data. Shape: (3,#FFTgrid).
+        psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
+        df (float): Frequency step size (1/Tobs).
+        num_segments (int, optional): The number of segments to split the signal into. Defaults to 1.
+    Returns:
+        float: The semi-coherent log likelihood
+    """
+    segment_indices = equal_SNR_segmentation(signal,psd_array,num_segments)
+
+    signal_split = [signal[:,segment_indices[i]:segment_indices[i+1]] for i in range(len(segment_indices)-1)]
+
+    psd_split = [psd_array[:,segment_indices[i]:segment_indices[i+1]] for i in range(len(segment_indices)-1)]
+
+    data_split = [data[:,segment_indices[i]:segment_indices[i+1]] for i in range(len(segment_indices)-1)]    
+
+    # Length of each segment in frequency points
+    lengths = np.diff(segment_indices)
+
+    # Maximum length of any segment in the freq domain, this is what we have to pad to
+    max_length = np.max(lengths).item()
+
+    # Fill in padded arrays
+    signal_array = np.zeros((3,len(lengths),max_length),complex)
+    data_array = np.zeros((3,len(lengths),max_length),complex)
+    psd_array= np.zeros((3,len(lengths),max_length),float)
+
+    # Frequency mask for every segments filling in the
+    mask = np.arange(max_length) < lengths[:,None]
+
+    # Maybe we can use the mask directly in the sum? Not sure
+
+    # fill in padded arrays
+    signal_array[:,mask] = np.concatenate(signal_split,axis=1)
+    data_array[:,mask] = np.concatenate(data_split,axis=1)
+    psd_array[:,mask] = np.concatenate(psd_split,axis=1)
+
+    # Fill extra padded values with infs for psd, 0/np.inf = 0 in the inner product
+    psd_array[:,~mask] = np.inf
+
+    # j: segment, i: channel, k: frequency point
+    # The nan to num function deals with the cases where psd = 0 and sets these values in the inner product to 0. #
+    # What is returned here is the components of upsilon for each segment. (j is the segment inde)
+    h_inner_d = 4*np.abs(np.einsum('ijk,ijk->j',signal_array,data_array.conj()/psd_array))*df
+
+    h_inner_h = 4*np.abs(np.einsum('ijk,ijk->j',signal_array,signal_array.conj()/psd_array))*df
+    
+    # Compute upsilon
+    upsilon = np.sum((h_inner_d/np.sqrt(h_inner_h))**2)
+
+    return(upsilon.item())
