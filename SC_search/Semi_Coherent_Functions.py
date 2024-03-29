@@ -138,6 +138,42 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
 
     return(upsilon.item())
 
+def semi_coherent_match(signal,data,psd_array,df,num_segments=1):
+    """
+    Semi-coherent match, using semi-coherent inner product. 
+
+    Args:
+        signal (array-like): The signal model. Shape: (3,#FFTgrid).
+        data (array-like): The data. Shape: (3,#FFTgrid).
+        psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
+        df (float): Frequency step size (1/Tobs).
+        num_segments (int, optional): The number of segments to split the signal into. Defaults to 1.
+    Returns:
+        float: The semi-coherent log likelihood
+    """
+    segment_indices = equal_SNR_segmentation(signal,psd_array,num_segments)
+
+    signal_split = [signal[:,segment_indices[i]:segment_indices[i+1]] for i in range(len(segment_indices)-1)]
+
+    psd_split = [psd_array[:,segment_indices[i]:segment_indices[i+1]] for i in range(len(segment_indices)-1)]
+
+    data_split = [data[:,segment_indices[i]:segment_indices[i+1]] for i in range(len(segment_indices)-1)]    
+
+    smatch = 0 
+
+    for segment_index in range(num_segments):
+
+        signal_segment = signal_split[segment_index]
+        psd_segment = psd_split[segment_index]
+        data_segment = data_split[segment_index]
+
+        #h_inner_d/sqrt(h_inner_h)
+        smatch += noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)
+    
+    smatch *= 1/np.sqrt(noise_weighted_inner_product(signal,signal,df,psd_array,phase_maximize=True)*noise_weighted_inner_product(signal,signal,df,psd_array,phase_maximize=True))
+
+    return(smatch.item())
+
 def vanilla_log_likelihood(signal,data,df,psd_array):
     """
     Standard Gaussian likelihood function. 
