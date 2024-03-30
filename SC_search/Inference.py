@@ -78,7 +78,7 @@ class dynesty_inference():
             self.generate_injection_data(include_noise)
 
         # Check injection values for the injection 
-        print('Log likelihood at injection: ',self.likelihood(self.source_parameters))
+        print('Log likelihood at injection: ',self.likelihood(self.source_parameters.copy()))
 
     def generate_frequency_grids(self,):
         '''
@@ -149,7 +149,7 @@ class dynesty_inference():
         '''
         
         # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
-        source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(self.source_parameters)
+        source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(self.source_parameters.copy())
         
         # Turn logging on for the injection waveform so we can debug statements 
         injection_waveform_args = self.waveform_args.copy()
