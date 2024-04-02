@@ -69,6 +69,8 @@ def semi_coherent_logl(signal,data,psd_array,df,d_inner_d,num_segments=1):
     """
     Semi-coherent log likelihood function for a given nunmber of segments
 
+    As defined in arXiv:2305.18048 eqn 9.
+
     Args:
         signal (array-like): The signal model. Shape: (3,#FFTgrid).
         data (array-like): The data. Shape: (3,#FFTgrid).

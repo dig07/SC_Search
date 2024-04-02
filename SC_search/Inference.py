@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from .Swarm_class import Semi_Coherent_Model
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
-from .Semi_Coherent_Functions import vanilla_log_likelihood
+from .Semi_Coherent_Functions import vanilla_log_likelihood,semi_coherent_logl,noise_weighted_inner_product
 from .Noise import *
 from .Waveforms import TaylorF2Ecc
 
@@ -26,6 +26,7 @@ class dynesty_inference():
                     prior_bounds,
                     source_parameters,
                     nlive,
+                    segment = None,
                     load_data_file=True,
                     data_file_name=None, 
                     include_noise=False):
@@ -37,6 +38,7 @@ class dynesty_inference():
             prior_bounds (numpy.ndarray): An array of prior bounds.
             source_parameters (numpy.ndarray): An array of source parameters.
             nlive (int): The number of live points for the nested sampling algorithm.
+            segment (int): Semi-coherent segment number for the log likelihood, if None then use coherent likelihood. 
             load_data_file (bool): Whether to load a data file or generate injection data.
             data_file_name (str): The name of the data file to load.
             include_noise (bool): Whether to include noise in the generated injection data.
@@ -76,6 +78,17 @@ class dynesty_inference():
         else:
             # Generate injection data
             self.generate_injection_data(include_noise)
+
+        # Set the likelihood function
+        if segment==None:
+            #If no segment specified use the standard likelihood
+            self.likelihood = self.standard_likelihood
+        if segment!=None:
+            #If segment specified use the semi-coherent likelihood
+            self.likelihood = self.semi_coherent_likelihood
+            # Compute the inner product of the data with itself for the likelihood (computed once and stored)
+            self.d_inner_d = noise_weighted_inner_product(self.data, self.data, self.df, self.psd_array, phase_maximize=False).item()
+            self.segment_number = segment
 
         # Check injection values for the injection 
         print('Log likelihood at injection: ',self.likelihood(self.source_parameters.copy()))
@@ -182,7 +195,7 @@ class dynesty_inference():
         '''
         np.save(filename,array.get())
 
-    def likelihood(self,parameters):
+    def standard_likelihood(self,parameters):
         '''
         The likelihood function for the search. 
 
@@ -199,6 +212,28 @@ class dynesty_inference():
 
         # Compute likelihood
         logl = vanilla_log_likelihood(model,self.data,self.df,self.psd_array)
+
+        return logl
+    
+    def semi_coherent_likelihood(self,parameters):
+        '''
+        Semi-coherent likelihood function. 
+        
+        Args:
+            parameters (array): The parameters for the model. 
+
+        Returns:
+            float: The log likelihood. 
+        
+        '''
+        params_transformed = TaylorF2Ecc_mc_eta_to_m1m2(parameters)
+
+
+        # Generate model
+        model = self.waveform_func(params_transformed,**self.waveform_args)
+
+        # Compute likelihood
+        logl = semi_coherent_logl(model,self.data,self.psd_array,self.df,self.d_inner_d,num_segments=self.segment_number)
 
         return logl
     
