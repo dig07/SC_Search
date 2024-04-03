@@ -309,7 +309,8 @@ class Post_Search_Inference:
                  prior_bounds, 
                  data_file_name,
                  swarm_directory,
-                 PySO_MCMC_kwargs):
+                 PySO_MCMC_kwargs,
+                 Spread_multiplier=None):
         '''
         Initializes a new instance of the Post Search Inference class.
 
@@ -320,6 +321,8 @@ class Post_Search_Inference:
             data_file_name (str): The name of the file containing the data.
             swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
             PySO_MCMC_kwargs (dict): A dictionary containing PySO MMCMC keyword arguments.
+            Spread_multiplier (float, optional): A multiplier for the spread of the initial positions for the MCMC. Defaults to None.
+                Role is to make the particles in the swarm spread out a bit more before inference. 
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -353,8 +356,24 @@ class Post_Search_Inference:
             # Note this does not include distances!!! Since the search statistic does not search over that
         self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:,3:-3]
 
+
+        if Spread_multiplier != None:
+            # Increase the spread of the initial positions from the means
+            self.increase_initial_position_spread(Spread_multiplier)
+
         # Draw distances from prior and insert into initial positions
         self.draw_distances_from_prior()
+
+    def increase_initial_position_spread(self,Spread_multiplier):
+        '''
+        Multiply the distance of each particle from the mean of the swarm by a factor of the spread multiplier.
+        '''
+
+        # Mean across whole swarm of positions across each dimension 
+        axis_means = np.mean(self.initial_positions,axis=0)
+        self.initial_positions = axis_means + Spread_multiplier*(self.initial_positions - axis_means)
+
+
 
     def generate_frequency_grids(self,):
         '''
