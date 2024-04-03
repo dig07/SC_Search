@@ -172,7 +172,7 @@ def semi_coherent_match(signal,data,psd_array,df,num_segments=1):
         #h_inner_d/sqrt(h_inner_h)
         smatch += noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)
     
-    smatch *= 1/np.sqrt(noise_weighted_inner_product(signal,signal,df,psd_array,phase_maximize=True)*noise_weighted_inner_product(signal,signal,df,psd_array,phase_maximize=True))
+    smatch *= 1/np.sqrt(noise_weighted_inner_product(signal,signal,df,psd_array,phase_maximize=True)*noise_weighted_inner_product(data,data,df,psd_array,phase_maximize=True))
 
     return(smatch.item())
 
