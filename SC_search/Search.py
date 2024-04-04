@@ -445,8 +445,11 @@ class Post_Search_Inference:
 
         sampler.Run()
 
+        # Load in swarm history 
+        posterior_samples_from_search = pd.read_csv(self.swarm_directory+'/SwarmEvolutionHistory.dat').to_numpy()[:,1:-1]
+
         # Save samples 
-        np.savetxt(self.swarm_directory+'/posterior_samples.dat',sampler.Points) 
+        np.savetxt(self.swarm_directory+'/posterior_samples.dat',posterior_samples_from_search) 
 
 
 
