@@ -126,7 +126,37 @@ class Semi_Coherent_Model_Inference(PySO.Model):
         # Hold the initial orbital phase fixed as it is unmeasured due to the semi-coherent phase maximisation at N=1
         self.constant_initial_orbital_phase = constant_initial_orbital_phase
 
+    def log_likelihood_zeus(self, params):
+        '''
+        Log likelihood/optimisation function for zeus.
+        using array of parameters instead of dictionary
 
+        Here it is actually the semi-coherent log likelihood (defaulting to N=1)
+
+        Parameter transforms are hardcoded in to:
+            - Polarization shift to match Balrog convention
+            - Mc,eta->m1,m2
+
+        Args:
+            params (dict): Waveform parameters.
+        
+        Returns:
+            float: The log likelihood (Any quantity to be optimised).
+        
+        '''
+
+        parameters_array = params.copy
+        
+        # Add in orbital phase fixed so we can generate the waveform
+        parameters_array.insert(7,self.constant_initial_orbital_phase)
+        
+        parameters_array = TaylorF2Ecc_mc_eta_to_m1m2(parameters_array)
+        
+        model = self.waveform(parameters_array,**self.waveform_args)
+
+        func_vals = semi_coherent_logl(model,self.data,self.psd_array,self.df,self.d_inner_d,num_segments=self.segment_number)
+
+        return(func_vals)
 
     def log_likelihood(self, params):
         '''

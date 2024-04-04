@@ -2,8 +2,12 @@ try:
     import cupy as cp 
 except ImportError:
     print('Cupy not installed, search (on full FFT grid) wont work')
-import numpy as np 
+try: 
+    import zeus
+except ImportError:
+    print('Zeus not installed..')
 
+import numpy as np 
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
@@ -15,7 +19,6 @@ from .Noise import *
 from .Waveforms import TaylorF2Ecc
 import PySO
 from .Veto import *
-import corner 
 
 class Search:
     '''
@@ -310,6 +313,7 @@ class Post_Search_Inference:
                  data_file_name,
                  swarm_directory,
                  PySO_MCMC_kwargs,
+                 zeus_num_steps = None
                  Spread_multiplier=None):
         '''
         Initializes a new instance of the Post Search Inference class.
@@ -321,6 +325,7 @@ class Post_Search_Inference:
             data_file_name (str): The name of the file containing the data.
             swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
             PySO_MCMC_kwargs (dict): A dictionary containing PySO MMCMC keyword arguments.
+            zeus_num_steps (int, optional): The number of steps to be used in the zeus sampler. Defaults to None.
             Spread_multiplier (float, optional): A multiplier for the spread of the initial positions for the MCMC. Defaults to None.
                 Role is to make the particles in the swarm spread out a bit more before inference. 
         '''
@@ -363,6 +368,8 @@ class Post_Search_Inference:
 
         # Draw distances from prior and insert into initial positions
         self.draw_distances_from_prior()
+
+        self.zeus_num_steps = zeus_num_steps
 
     def increase_initial_position_spread(self,Spread_multiplier):
         '''
@@ -451,6 +458,25 @@ class Post_Search_Inference:
         # Save samples 
         np.savetxt(self.swarm_directory+'/posterior_samples.dat',posterior_samples_from_search) 
 
+    def initialize_and_run_inference_zeus(self,):
+        '''
+        Initializes and runs the inference on the results of the search using the zeus sampler
+        '''
+        Coherent_phase_maximised_inference_model = Semi_Coherent_Model_Inference(
+                                                            self.prior_bounds,
+                                                            self.data,
+                                                            self.psd_array,
+                                                            self.df,
+                                                            self.waveform_func,
+                                                            segment_number = 1,
+                                                            waveform_args=self.waveform_args)
+
+        sampler = zeus.EnsembleSampler(self.initial_positions.shape[0], self.initial_positions.shape[1], Coherent_phase_maximised_inference_model.log_likelihood_zeus)
+        sampler.run_mcmc(self.initial_positions, self.zeus_num_steps)
+        chain = sampler.get_chain(flat=True)
+
+        # Save samples 
+        np.savetxt(self.swarm_directory+'/posterior_samples.dat',chain) 
 
 
 
