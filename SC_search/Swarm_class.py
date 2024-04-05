@@ -220,6 +220,6 @@ class Coherent_Model_inference(PySO.Model):
         
         model = self.waveform(parameters_array,**self.waveform_args)
 
-        func_vals = vanilla_log_likelihood(model,model,self.df,self.psd_array)
+        func_vals = vanilla_log_likelihood(model,self.data,self.df,self.psd_array)
 
         return(func_vals)
