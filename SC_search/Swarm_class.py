@@ -177,8 +177,7 @@ class Coherent_Model_inference(PySO.Model):
     'f_low',
     'e0']
 
-    def __init__(self,priors,data,psd_array,df,waveform_function,segment_number=1,
-                 constant_initial_orbital_phase= 0, waveform_args=None):
+    def __init__(self,priors,data,psd_array,df,waveform_function,waveform_args=None):
         '''
         Args:
             priors (list): The priors bounds for the inference. 
@@ -188,7 +187,6 @@ class Coherent_Model_inference(PySO.Model):
             waveform_function (function): The waveform function to be used.
             waveform_args (dict, optional): The arguments for the waveform function. Defaults to None.
         '''
-        self.segment_number = segment_number
         self.bounds = priors
         self.data = data
         self.psd_array = psd_array
