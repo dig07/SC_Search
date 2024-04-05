@@ -2,17 +2,12 @@ try:
     import cupy as cp 
 except ImportError:
     print('Cupy not installed, search (on full FFT grid) wont work')
-try: 
-    import zeus
-except ImportError:
-    print('Zeus not installed..')
-
 import numpy as np 
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
-from .Swarm_class import Semi_Coherent_Model, Semi_Coherent_Model_Inference
+from .Swarm_class import Semi_Coherent_Model, Semi_Coherent_Model_Inference, Coherent_Model_inference
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import upsilon_func
 from .Noise import *
@@ -313,6 +308,7 @@ class Post_Search_Inference:
                  data_file_name,
                  swarm_directory,
                  PySO_MCMC_kwargs,
+                 coherent_or_N_1='N_1',
                  Spread_multiplier=None):
         '''
         Initializes a new instance of the Post Search Inference class.
@@ -324,6 +320,7 @@ class Post_Search_Inference:
             data_file_name (str): The name of the file containing the data.
             swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
             PySO_MCMC_kwargs (dict): A dictionary containing PySO MMCMC keyword arguments.
+            coherent_or_N_1 (str, optional): A flag indicating whether to perform coherent or N-1 PE. Defaults to 'N_1'.
             Spread_multiplier (float, optional): A multiplier for the spread of the initial positions for the MCMC. Defaults to None.
                 Role is to make the particles in the swarm spread out a bit more before inference. 
         '''
@@ -367,6 +364,13 @@ class Post_Search_Inference:
         # Draw distances from prior and insert into initial positions
         self.draw_distances_from_prior()
 
+        if coherent_or_N_1 == 'Coherent':
+
+            # Draw initial orbital phases for the coherent PE if requested
+            self.draw_initial_orbital_phases()
+
+        # If not coherent, ie N_1 no need to generate initial orbital phases as we do a phase maximisation anyway 
+        
 
     def increase_initial_position_spread(self,Spread_multiplier):
         '''
@@ -428,7 +432,19 @@ class Post_Search_Inference:
         # Insert distances into the correct index of the initial positions
         self.initial_positions = np.insert(self.initial_positions,2,distance_draws,axis=1)
 
-    def initialize_and_run_inference(self,):
+    def draw_initial_orbital_phases(self,):
+        '''
+        Draws initial orbital phases from a uniform distribution and fills it into the initial guesses for the inference. 
+            As the search does not search over initial orbital phase, this is a necessary step. 
+
+        Only used for coherent post search PE. 
+        '''
+        initial_orbital_phase_draws = np.random.uniform(self.prior_bounds[7][0],self.prior_bounds[7][1],size=(self.initial_positions.shape[0]))
+        
+        # Insert distances into the correct index of the initial positions
+        self.initial_positions = np.insert(self.initial_positions,7,initial_orbital_phase_draws,axis=1) 
+
+    def initialize_and_run_inference_N_1(self,):
         '''
         Initializes and runs the inference on the results of the search
         '''
@@ -439,6 +455,32 @@ class Post_Search_Inference:
                                                             self.df,
                                                             self.waveform_func,
                                                             segment_number = 1,
+                                                            waveform_args=self.waveform_args)
+        
+        sampler = PySO.Swarm(Coherent_phase_maximised_inference_model,
+                        self.initial_positions.shape[0], # Num particless
+                        Initialguess = self.initial_positions, # Initial guess
+                        Output = self.swarm_directory,
+                        **self.PySO_MCMC_kwargs)
+
+        sampler.Run()
+
+        # Load in swarm history 
+        posterior_samples_from_search = pd.read_csv(self.swarm_directory+'/SwarmEvolutionHistory.dat').to_numpy()[:,1:-1]
+
+        # Save samples 
+        np.savetxt(self.swarm_directory+'/posterior_samples.dat',posterior_samples_from_search) 
+
+    def initialize_and_run_inference_Coherent(self,):
+        '''
+        Initializes and runs the inference on the results of the search
+        '''
+        Coherent_phase_maximised_inference_model = Coherent_Model_inference(
+                                                            self.prior_bounds,
+                                                            self.data,
+                                                            self.psd_array,
+                                                            self.df,
+                                                            self.waveform_func,
                                                             waveform_args=self.waveform_args)
         
         sampler = PySO.Swarm(Coherent_phase_maximised_inference_model,
