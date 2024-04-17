@@ -32,7 +32,8 @@ class Search:
                  include_noise=True,
                  load_data_file = False,
                  data_file_name = None,
-                 noise_only_injection = False):
+                 noise_only_injection = False,
+                 masking = None):
         '''
         Initializes a new instance of the Search class.
 
@@ -50,6 +51,7 @@ class Search:
             load_data (bool, optional): A flag indicating whether to load the data to be searched over. 
             data_file_name (str, optional): The name of the file containing the data to be searched over.
             noise_only_injection (bool, optional): A flag indicating whether to inject noise only. Defaults to False.  
+            masking (list, optional): A list of booleans indicating wether to use the masked upsilon function at each segment. Defaults to [False]*len(segment_ladder).
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -98,6 +100,11 @@ class Search:
                 # Only do this for not-loaded in data as we can isolate the noise and the signal
             self.check_upsilons()
 
+        # Default to using the non masked function for the upsilon statistic
+        if masking == None:
+            self.masking_ladder = [False]*len(self.segment_ladder)
+        else: 
+            self.masking_ladder = masking
 
     def generate_frequency_grids(self,):
         '''
@@ -252,16 +259,13 @@ class Search:
         """
         # Initialise classes at each segment for the semi-coherent search for the semi-coherent search
 
-        # Set the objective function to use the masked version of the upsilon statistic, down to N=1 where the standard implementation with for loop is faster
-        masking_ladder = [True if segment!=1 else False for segment in self.segment_ladder] 
-
         self.Semi_Coherent_classes = [Semi_Coherent_Model(segment_number,
                                                             self.prior_bounds,
                                                             self.data,
                                                             self.psd_array,
                                                             self.df,
                                                             self.waveform_func,
-                                                            waveform_args=self.waveform_args,masking=masking_ladder[segment_index]) for segment_index,segment_number in enumerate(self.segment_ladder)]
+                                                            waveform_args=self.waveform_args,masking=self.masking_ladder[segment_index]) for segment_index,segment_number in enumerate(self.segment_ladder)]
         
         PySO_search = PySO.HierarchicalSwarmHandler(self.Semi_Coherent_classes,
                                 self.PySO_num_swarms,# Number of initial swarms
