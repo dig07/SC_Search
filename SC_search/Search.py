@@ -261,7 +261,7 @@ class Search:
                                                             self.psd_array,
                                                             self.df,
                                                             self.waveform_func,
-                                                            waveform_args=self.waveform_args,masking=masking_ladder[segment_index]) for segment_index,segment_number in self.segment_ladder]
+                                                            waveform_args=self.waveform_args,masking=masking_ladder[segment_index]) for segment_index,segment_number in enumerate(self.segment_ladder)]
         
         PySO_search = PySO.HierarchicalSwarmHandler(self.Semi_Coherent_classes,
                                 self.PySO_num_swarms,# Number of initial swarms
