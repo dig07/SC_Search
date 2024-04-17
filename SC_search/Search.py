@@ -251,13 +251,17 @@ class Search:
         Initializes the hierarchical search, via the PySO package, for the semi-coherent search.
         """
         # Initialise classes at each segment for the semi-coherent search for the semi-coherent search
+
+        # Set the objective function to use the masked version of the upsilon statistic, down to N=1 where the standard implementation with for loop is faster
+        masking_ladder = [True if segment!=1 else False for segment in self.segment_ladder] 
+
         self.Semi_Coherent_classes = [Semi_Coherent_Model(segment_number,
                                                             self.prior_bounds,
                                                             self.data,
                                                             self.psd_array,
                                                             self.df,
                                                             self.waveform_func,
-                                                            waveform_args=self.waveform_args) for segment_number in self.segment_ladder]
+                                                            waveform_args=self.waveform_args,masking=masking_ladder[segment_index]) for segment_index,segment_number in self.segment_ladder]
         
         PySO_search = PySO.HierarchicalSwarmHandler(self.Semi_Coherent_classes,
                                 self.PySO_num_swarms,# Number of initial swarms

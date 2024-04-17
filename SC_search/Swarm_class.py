@@ -1,6 +1,6 @@
 import numpy as np
 import PySO
-from .Semi_Coherent_Functions import upsilon_func, semi_coherent_logl, noise_weighted_inner_product, vanilla_log_likelihood
+from .Semi_Coherent_Functions import upsilon_func, semi_coherent_logl, noise_weighted_inner_product, vanilla_log_likelihood,upsilon_func_masking
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 
 class Semi_Coherent_Model(PySO.Model):
@@ -21,7 +21,7 @@ class Semi_Coherent_Model(PySO.Model):
     'e0']
 
     def __init__(self,segment_number,priors,data,psd_array,df,waveform_function,
-                 constant_initial_orbital_phase= 0, constant_distance=100.e+6, waveform_args=None):
+                 constant_initial_orbital_phase= 0, constant_distance=100.e+6, waveform_args=None,masking=False):
         '''
         Args:
             segment_number (int): The segment number of the semi-coherent search.
@@ -33,6 +33,7 @@ class Semi_Coherent_Model(PySO.Model):
             constant_initial_orbital_phase (float, optional): The constant initial orbital phase. Defaults to 0.
             constant_distance (float, optional): The constant distance. Defaults to 100.e+6.
             waveform_args (dict, optional): The arguments for the waveform function. Defaults to None.
+            masking (bool, optional): Whether to use the masked version of the upsilon statistic (Only really good at high N). Defaults to False
         
         '''
         self.segment_number = segment_number
@@ -48,9 +49,15 @@ class Semi_Coherent_Model(PySO.Model):
         self.constant_initial_orbital_phase = constant_initial_orbital_phase
         self.constant_distance = constant_distance
 
+        # Set the objective function to be used 
+        if masking == True:
+            self.objective_function = upsilon_func_masking
+        if masking == False:
+            self.objective_function = upsilon_func
+
     def log_likelihood(self, params):
         '''
-        Log likelihood/optimisation function for PySO. 
+        Log likelihood/optimisation function for PySO. Set to the upsilon statistic for the semi-coherent search.
         The fact this is called Log likelihood is an artifact of the way PySO is set up. Can be any 
         quantity to be maximised. 
 
@@ -76,7 +83,7 @@ class Semi_Coherent_Model(PySO.Model):
         
         model = self.waveform(parameters_array,**self.waveform_args)
 
-        func_vals = upsilon_func(model,self.data,self.psd_array,self.df,num_segments=self.segment_number)
+        func_vals = self.objective_function(model,self.data,self.psd_array,self.df,num_segments=self.segment_number)
 
         return(func_vals)
 

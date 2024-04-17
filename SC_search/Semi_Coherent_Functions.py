@@ -4,6 +4,9 @@ try:
 except ImportError:
     import numpy as np
 import math
+import warnings
+warnings.simplefilter('ignore', RuntimeWarning)
+
 
 def noise_weighted_inner_product(a, b, df, psd, phase_maximize=False):
     """
@@ -176,6 +179,23 @@ def semi_coherent_match(signal,data,psd_array,df,num_segments=1):
 
     return(smatch.item())
 
+def coherent_match(signal,data,psd_array,df):
+    """
+    Standard coherent normalised match quantity
+
+    Args:
+        signal (array-like): The signal model. Shape: (3,#FFTgrid).
+        data (array-like): The data. Shape: (3,#FFTgrid).
+        psd_array (array-like): The PSD in each channel. Shape: (3,#FFTgrid).
+        df (float): Frequency step size (1/Tobs).
+    Returns:
+        float: The coherent log likelihood
+    """
+
+    smatch = noise_weighted_inner_product(signal,data,df,psd_array,phase_maximize=True)/np.sqrt(noise_weighted_inner_product(signal,signal,df,psd_array,phase_maximize=True)*noise_weighted_inner_product(data,data,df,psd_array,phase_maximize=True))
+
+    return(smatch.item())
+
 def vanilla_log_likelihood(signal,data,df,psd_array):
     """
     Standard Gaussian likelihood function. 
@@ -229,11 +249,11 @@ def upsilon_func_masking(signal,data,psd_array,df,num_segments=1):
     max_length = np.max(lengths).item()
 
     # Fill in padded arrays
-    signal_array = np.zeros((3,len(lengths),max_length),complex)
-    data_array = np.zeros((3,len(lengths),max_length),complex)
-    psd_array= np.zeros((3,len(lengths),max_length),float)
+    signal_array = np.zeros((3,num_segments,max_length),complex)
+    data_array = np.zeros((3,num_segments,max_length),complex)
+    psd_array= np.zeros((3,num_segments,max_length),float)
 
-    # Frequency mask for every segments filling in the
+    # Frequency mask for every segments filling in 
     mask = np.arange(max_length) < lengths[:,None]
 
     # Maybe we can use the mask directly in the sum? Not sure
@@ -243,15 +263,18 @@ def upsilon_func_masking(signal,data,psd_array,df,num_segments=1):
     data_array[:,mask] = np.concatenate(data_split,axis=1)
     psd_array[:,mask] = np.concatenate(psd_split,axis=1)
 
-    # Fill extra padded values with infs for psd, 0/np.inf = 0 in the inner product
-    psd_array[:,~mask] = np.inf
+    # # Fill extra padded values with infs for psd, 0+0.j/np.inf = 0 in the inner product
+    # psd_array[:,~mask] = np.inf # Cannot do this with cupy, for some reason it doesn't like infs in the fractions when it involes complex numbers
+
+    
+    # np.nan_to_num works in both cupy and numpy, converts all the nans for the complex divide by 0 to 0.
 
     # j: segment, i: channel, k: frequency point
     # The nan to num function deals with the cases where psd = 0 and sets these values in the inner product to 0. #
-    # What is returned here is the components of upsilon for each segment. (j is the segment inde)
-    h_inner_d = 4*np.abs(np.einsum('ijk,ijk->j',signal_array,data_array.conj()/psd_array))*df
+    # What is returned here is the components of upsilon for each segment. (j is the segment index)
+    h_inner_d = 4*np.abs(np.einsum('ijk,ijk->j',signal_array,np.nan_to_num(data_array.conj()/psd_array)))*df
 
-    h_inner_h = 4*np.abs(np.einsum('ijk,ijk->j',signal_array,signal_array.conj()/psd_array))*df
+    h_inner_h = 4*np.abs(np.einsum('ijk,ijk->j',signal_array,np.nan_to_num(signal_array.conj()/psd_array)))*df
     
     # Compute upsilon
     upsilon = np.sum((h_inner_d/np.sqrt(h_inner_h))**2)
