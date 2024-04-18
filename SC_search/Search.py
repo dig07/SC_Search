@@ -537,24 +537,6 @@ class Post_Search_Inference_Dynesty:
         '''
 
         self.frequency_series_dict = frequency_series_dict
-        
-        self.PySO_MCMC_kwargs = PySO_MCMC_kwargs
-
-        # Generate CPU and GPU frequency grids
-        self.generate_frequency_grids()
-
-        # Generate PSD
-        self.generate_psd()
-
-        # Search is being tuned for these so hardcoded for now
-        self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
-        self.waveform_args = {'freqs_sparse':self.freqs_sparse,
-                              'freqs_dense':self.freqs,
-                              'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
-                              'f_high':self.fmax,
-                              'T_obs':self.T_obs,
-                              'TDIType':'AET',
-                              'logging': False}
 
         # Load in data
         self.data = cp.asarray(np.load(data_file_name))

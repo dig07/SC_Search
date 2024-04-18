@@ -90,8 +90,9 @@ class dynesty_inference():
             self.d_inner_d = noise_weighted_inner_product(self.data, self.data, self.df, self.psd_array, phase_maximize=False).item()
             self.segment_number = segment
 
-        # Check injection values for the injection 
-        print('Log likelihood at injection: ',self.likelihood(self.source_parameters.copy()))
+        if source_parameters is not None:
+            # Check injection values for the injection 
+            print('Log likelihood at injection: ',self.likelihood(self.source_parameters.copy()))
 
     def generate_frequency_grids(self,):
         '''
