@@ -555,10 +555,10 @@ class Post_Search_Inference_Dynesty:
             self.priors[i,1] = np.max(self.initial_positions[:,i])
         
         # Insert distance prior bounds manually
-        np.insert(self.priors,2,distance_prior_bounds,axis=0)
+        self.priors = np.insert(self.priors,2,distance_prior_bounds,axis=0)
 
         # Insert physical initial orbital phase prior bounds manually
-        np.insert(self.priors,7,np.array([0,2*np.pi]),axis=0)
+        self.priors = np.insert(self.priors,7,np.array([0,2*np.pi]),axis=0)
 
         print('Final prior setup for sampling: \n')
         print(self.priors)
