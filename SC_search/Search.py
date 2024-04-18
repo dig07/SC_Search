@@ -14,6 +14,7 @@ from .Noise import *
 from .Waveforms import TaylorF2Ecc
 import PySO
 from .Veto import *
+from .Inference import dynesty_inference
 
 class Search:
     '''
@@ -505,7 +506,92 @@ class Post_Search_Inference:
         # Save samples 
         np.savetxt(self.swarm_directory+'/posterior_samples.dat',posterior_samples_from_search) 
 
+class Post_Search_Inference_Dynesty:
+    '''
+    Class to perform inference on the results of the search.
+        Very simple class that uses the results of the search to generate some uniform prior bounds
 
+    Harcoded to the N-1, phase maximised coherent log likelihood. 
+
+    '''        
+    def __init__(self, 
+                 frequency_series_dict, 
+                 data_file_name,
+                 swarm_directory,
+                 distance_prior_bounds,
+                 nlive=1000):
+        '''
+        Initializes a new instance of the Post Search Inference class using dynesty for the inference
+
+        Parameters:
+            frequency_series_dict (dict): A dictionary containing frequency series data. Also contains information about the LISA mission such as
+                time of observation etc. 
+            prior_bounds (list): A list of prior bounds for the inference
+            data_file_name (str): The name of the file containing the data.
+            swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
+            distance_prior_bounds (array): [min,max] bounds for the distance prior.
+            coherent_or_N_1 (str, optional): A flag indicating whether to perform coherent or N-1 PE. Defaults to 'N_1'.
+            Spread_multiplier (float, optional): A multiplier for the spread of the initial positions for the MCMC. Defaults to None.
+                Role is to make the particles in the swarm spread out a bit more before inference.
+            nlive (int, optional): Number of live points for dynesty. Defaults to 1000.
+        '''
+
+        self.frequency_series_dict = frequency_series_dict
+        
+        self.PySO_MCMC_kwargs = PySO_MCMC_kwargs
+
+        # Generate CPU and GPU frequency grids
+        self.generate_frequency_grids()
+
+        # Generate PSD
+        self.generate_psd()
+
+        # Search is being tuned for these so hardcoded for now
+        self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+        self.waveform_args = {'freqs_sparse':self.freqs_sparse,
+                              'freqs_dense':self.freqs,
+                              'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
+                              'f_high':self.fmax,
+                              'T_obs':self.T_obs,
+                              'TDIType':'AET',
+                              'logging': False}
+
+        # Load in data
+        self.data = cp.asarray(np.load(data_file_name))
+
+        self.swarm_directory = swarm_directory
+
+        #  Generate priors from the search results
+        # Load positions from final iteration of the search, use these to compute priors. 
+            # Note this does not include distances!!! Since the search statistic does not search over that
+        self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:,3:-3]
+
+        # Generate priors for all params from end of search (-Distance,initial orbital phase)
+        self.priors = np.zeros((8,2))
+        for i in range(8):
+            self.priors[i,0] = np.min(self.initial_positions[:,i])
+            self.priors[i,1] = np.max(self.initial_positions[:,i])
+        
+        # Insert distance prior bounds manually
+        np.insert(self.priors,2,distance_prior_bounds,axis=0)
+
+        # Insert physical initial orbital phase prior bounds manually
+        np.insert(self.priors,7,np.array([0,2*np.pi]),axis=0)
+
+        print('Final prior setup for sampling: \n')
+        print(self.priors)
+
+        self.nlive = nlive
+        
+        self.inference_object = dynesty_inference(self.frequency_series_dict,
+                                                  self.priors,self.nlive,load_data_file=True,data_file_name=data_file_name)
+        
+    def run_sampler(self,):
+        '''
+        Run the dynesty sampler
+        '''
+        sampler_results = self.inference_object.run_sampler()
+        equally_weighted_samples = self.inference_object.resample_and_save(sampler_results)
 
 
 if __name__=='__main__':

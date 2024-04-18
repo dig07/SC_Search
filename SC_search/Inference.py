@@ -24,8 +24,8 @@ class dynesty_inference():
     def __init__(self, 
                     frequency_series_dict, 
                     prior_bounds,
-                    source_parameters,
                     nlive,
+                    source_parameters=None,
                     segment = None,
                     load_data_file=True,
                     data_file_name=None, 
@@ -36,7 +36,7 @@ class dynesty_inference():
         Args:
             frequency_series_dict (dict): A dictionary containing frequency series data.
             prior_bounds (numpy.ndarray): An array of prior bounds.
-            source_parameters (numpy.ndarray): An array of source parameters.
+            source_parameters (numpy.ndarray): An array of source parameters (Defaults to None, only needed if not loading in datafile).
             nlive (int): The number of live points for the nested sampling algorithm.
             segment (int): Semi-coherent segment number for the log likelihood, if None then use coherent likelihood. 
             load_data_file (bool): Whether to load a data file or generate injection data.
