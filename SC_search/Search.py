@@ -558,7 +558,11 @@ class Post_Search_Inference_Dynesty:
         self.priors = np.insert(self.priors,2,distance_prior_bounds,axis=0)
 
         # Insert physical initial orbital phase prior bounds manually
-        self.priors = np.insert(self.priors,7,np.array([0,2*np.pi]),axis=0)
+        self.priors = np.insert(self.priors,7,np.array([-np.pi,np.pi]),axis=0)
+
+        # Reset priors for inclination + polarization to be the whole physical range
+        self.priors[5] = np.array([0,np.pi])# inc
+        self.priors[6] = np.array([-np.pi,0])# pol (not sure about the limits here)
 
         print('Final prior setup for sampling: \n')
         print(self.priors)
