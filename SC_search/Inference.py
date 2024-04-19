@@ -283,4 +283,6 @@ class dynesty_inference():
         # Save samples
         np.savetxt('samples.txt',samples_equal)
         
+        print('Maximum log likelihood: ',np.max(results.logl))
+
         return(samples_equal)
