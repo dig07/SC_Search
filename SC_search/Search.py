@@ -650,7 +650,7 @@ class Post_Search_Inference_Zeus:
 
         # Load positions from final iteration of the search for one swarm
             # Note this does not include distances!!! Since the search statistic does not search over that
-        self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:,3:-3]
+        self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:100,3:-3]
 
 
         if Spread_multiplier != None:
