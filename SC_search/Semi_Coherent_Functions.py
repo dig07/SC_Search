@@ -192,7 +192,7 @@ def coherent_match(signal,data,psd_array,df):
         float: The coherent log likelihood
     """
 
-    smatch = noise_weighted_inner_product(signal,data,df,psd_array,phase_maximize=True)/np.sqrt(noise_weighted_inner_product(signal,signal,df,psd_array,phase_maximize=True)*noise_weighted_inner_product(data,data,df,psd_array,phase_maximize=True))
+    smatch = noise_weighted_inner_product(signal,data,df,psd_array,phase_maximize=False)/np.sqrt(noise_weighted_inner_product(signal,signal,df,psd_array,phase_maximize=True)*noise_weighted_inner_product(data,data,df,psd_array,phase_maximize=True))
 
     return(smatch.item())
 
