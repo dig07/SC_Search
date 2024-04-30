@@ -599,6 +599,8 @@ class Post_Search_Inference_Zeus:
                  prior_bounds, 
                  data_file_name,
                  swarm_directory,
+                 redraw_eta = False,
+                 number_of_walkers=100,
                  num_steps=1000,
                  Zeus_kwargs= {},
                  coherent_or_N_1='N_1',
@@ -612,6 +614,9 @@ class Post_Search_Inference_Zeus:
             prior_bounds (list): A list of prior bounds for the inference
             data_file_name (str): The name of the file containing the data.
             swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
+            redraw_eta (bool, optional): A flag indicating whether to redraw the eta parameter from the prior. Defaults to False.
+            number_of_walkers (int): The number of walkers to be used in the MCMC. This is the number of particles from the end of the swarm used. 
+                The best particles are selected based on the upsilon value and used in the MCMC. 
             num_steps (int): The number of steps to run the MCMC for.
             Zeus_kwargs (dict): A dictionary containing Zeus keyword arguments.
             coherent_or_N_1 (str, optional): A flag indicating whether to perform coherent or N-1 PE. Defaults to 'N_1'.
@@ -648,9 +653,11 @@ class Post_Search_Inference_Zeus:
 
         self.swarm_directory = swarm_directory
 
-        # Load positions from final iteration of the search for one swarm
+        # Load positions from final iteration of the search for one swarm   
             # Note this does not include distances!!! Since the search statistic does not search over that
-        self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:100,3:-3]
+        swarm_final_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()
+        final_upsilon_values = swarm_final_positions[:,-3]
+        self.initial_positions = swarm_final_positions[np.argsort(final_upsilon_values)[-number_of_walkers:],3:-3]
 
 
         if Spread_multiplier != None:
@@ -659,6 +666,11 @@ class Post_Search_Inference_Zeus:
 
         # Draw distances from prior and insert into initial positions
         self.draw_distances_from_prior()
+
+        if redraw_eta == True:
+            # Redraw eta from prior
+            self.draw_redraw_eta()
+
 
         if coherent_or_N_1 == 'Coherent':
 
@@ -739,6 +751,16 @@ class Post_Search_Inference_Zeus:
         
         # Insert distances into the correct index of the initial positions
         self.initial_positions = np.insert(self.initial_positions,7,initial_orbital_phase_draws,axis=1) 
+
+    def draw_redraw_eta(self,):
+        '''
+        Redraws eta from the prior and fills it into the initial guesses for the inference. 
+            As the search does not search over eta, this is a necessary step. 
+        '''
+        eta_draws = np.random.uniform(self.prior_bounds[1][0],self.prior_bounds[1][1],size=(self.initial_positions.shape[0]))
+
+        # Insert eta into the correct index of the initial positions
+        self.initial_positions = np.insert(self.initial_positions,1,eta_draws,axis=1)
 
     def initialize_and_run_inference_N_1(self,):
         '''
