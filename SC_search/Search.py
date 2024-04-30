@@ -759,8 +759,8 @@ class Post_Search_Inference_Zeus:
         '''
         eta_draws = np.random.uniform(self.prior_bounds[1][0],self.prior_bounds[1][1],size=(self.initial_positions.shape[0]))
 
-        # Insert eta into the correct index of the initial positions
-        self.initial_positions = np.insert(self.initial_positions,1,eta_draws,axis=1)
+        # Overwrite eta parameter for initial positions
+        self.initial_positions[:,1] = eta_draws
 
     def initialize_and_run_inference_N_1(self,):
         '''
