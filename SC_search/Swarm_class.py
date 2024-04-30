@@ -153,7 +153,7 @@ class Semi_Coherent_Model_Inference(PySO.Model):
         
         '''
         # Convert parameters from dict to list 
-        parameters_array = [params[key] for key in list(params.keys())]
+        parameters_array = list(params) #[params[key] for key in list(params.keys())]
 
         # Add in orbital phase fixed so we can generate the waveform
         parameters_array.insert(7,self.constant_initial_orbital_phase)
@@ -221,7 +221,7 @@ class Coherent_Model_inference(PySO.Model):
         
         '''
         # Convert parameters from dict to list 
-        parameters_array = [params[key] for key in list(params.keys())]
+        parameters_array = list(params) # [params[key] for key in list(params.keys())]
 
         parameters_array = TaylorF2Ecc_mc_eta_to_m1m2(parameters_array)
         

@@ -2,6 +2,12 @@ try:
     import cupy as cp 
 except ImportError:
     print('Cupy not installed, search (on full FFT grid) wont work')
+
+try: 
+    import zeus
+except ImportError:
+    print('Zeus not installed')
+
 import numpy as np 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -578,3 +584,214 @@ class Post_Search_Inference_Dynesty:
         '''
         sampler_results = self.inference_object.run_sampler()
         equally_weighted_samples = self.inference_object.resample_and_save(sampler_results)
+
+
+class Post_Search_Inference_Zeus:
+    '''
+    Class to perform inference on the results of the search.
+        Each swarm from the search is loaded in and inference is performed on it using Zeus.
+
+    Harcoded to the N-1, phase maximised coherent log likelihood. 
+
+    '''        
+    def __init__(self, 
+                 frequency_series_dict, 
+                 prior_bounds, 
+                 data_file_name,
+                 swarm_directory,
+                 num_steps=1000,
+                 Zeus_kwargs= None,
+                 coherent_or_N_1='N_1',
+                 Spread_multiplier=None):
+        '''
+        Initializes a new instance of the Post Search Inference class.
+
+        Parameters:
+            frequency_series_dict (dict): A dictionary containing frequency series data. Also contains information about the LISA mission such as
+                time of observation etc. 
+            prior_bounds (list): A list of prior bounds for the inference
+            data_file_name (str): The name of the file containing the data.
+            swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
+            num_steps (int): The number of steps to run the MCMC for.
+            Zeus_kwargs (dict): A dictionary containing Zeus keyword arguments.
+            coherent_or_N_1 (str, optional): A flag indicating whether to perform coherent or N-1 PE. Defaults to 'N_1'.
+            Spread_multiplier (float, optional): A multiplier for the spread of the initial positions for the MCMC. Defaults to None.
+                Role is to make the particles in the swarm spread out a bit more before inference. 
+        '''
+
+        self.frequency_series_dict = frequency_series_dict
+        
+        self.prior_bounds = prior_bounds
+
+        self.num_steps = num_steps
+
+        self.zeus_kwargs = Zeus_kwargs
+
+        # Generate CPU and GPU frequency grids
+        self.generate_frequency_grids()
+
+        # Generate PSD
+        self.generate_psd()
+
+        # Search is being tuned for these so hardcoded for now
+        self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+        self.waveform_args = {'freqs_sparse':self.freqs_sparse,
+                              'freqs_dense':self.freqs,
+                              'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
+                              'f_high':self.fmax,
+                              'T_obs':self.T_obs,
+                              'TDIType':'AET',
+                              'logging': False}
+
+        # Load in data
+        self.data = cp.asarray(np.load(data_file_name))
+
+        self.swarm_directory = swarm_directory
+
+        # Load positions from final iteration of the search for one swarm
+            # Note this does not include distances!!! Since the search statistic does not search over that
+        self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:,3:-3]
+
+
+        if Spread_multiplier != None:
+            # Increase the spread of the initial positions from the means
+            self.increase_initial_position_spread(Spread_multiplier)
+
+        # Draw distances from prior and insert into initial positions
+        self.draw_distances_from_prior()
+
+        if coherent_or_N_1 == 'Coherent':
+
+            # Draw initial orbital phases for the coherent PE if requested
+            self.draw_initial_orbital_phases()
+
+        # If not coherent, ie N_1 no need to generate initial orbital phases as we do a phase maximisation anyway 
+        
+
+    def increase_initial_position_spread(self,Spread_multiplier):
+        '''
+        Multiply the distance of each particle from the mean of the swarm by a factor of the spread multiplier.
+        '''
+
+        # Mean across whole swarm of positions across each dimension 
+        axis_means = np.mean(self.initial_positions,axis=0)
+        self.initial_positions = axis_means + Spread_multiplier*(self.initial_positions - axis_means)
+
+
+
+    def generate_frequency_grids(self,):
+        '''
+        Generates the dense and sparse frequency grids for search. 
+        Stores both on CPU and GPU.         
+        '''
+
+        # Initialising values for frequency grid
+        self.fmin = self.frequency_series_dict['fmin']
+        self.fmax = self.frequency_series_dict['fmax']
+        self.T_obs = self.frequency_series_dict['T_obs']
+
+        # Downsampling factor is used for the sparse frequency grid for interpolation
+        self.downsampling_factor = self.frequency_series_dict['downsampling_factor']
+
+        # Generating frequency grid (dense)
+        self.df = 1/self.T_obs
+
+        self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
+        self.freqs_on_CPU = self.freqs.get() # On CPU
+
+        self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU
+
+        self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
+
+    def generate_psd(self,):
+        '''
+        Generates the PSD for the search.
+
+        - Harcoded to Michelson PSD for now 
+        '''
+        # Generate the PSD
+        Sdisp = Sdisp_SciRD(self.freqs_on_CPU)
+        Sopt = Sopt_SciRD(self.freqs_on_CPU)
+        self.psd_A = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
+        self.psd_E = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
+        self.psd_T = psd_TX(self.freqs_on_CPU,Sdisp,Sopt)
+
+        self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
+    
+    def draw_distances_from_prior(self,):
+        '''
+        Draws a distances from the prior and fills it into the initial guesses for the inference. 
+            As the search does not search over distance, this is a necessary step. 
+        '''
+        distance_draws = np.random.uniform(self.prior_bounds[2][0],self.prior_bounds[2][1],size=(self.initial_positions.shape[0]))
+        
+        # Insert distances into the correct index of the initial positions
+        self.initial_positions = np.insert(self.initial_positions,2,distance_draws,axis=1)
+
+    def draw_initial_orbital_phases(self,):
+        '''
+        Draws initial orbital phases from a uniform distribution and fills it into the initial guesses for the inference. 
+            As the search does not search over initial orbital phase, this is a necessary step. 
+
+        Only used for coherent post search PE. 
+        '''
+        initial_orbital_phase_draws = np.random.uniform(self.prior_bounds[7][0],self.prior_bounds[7][1],size=(self.initial_positions.shape[0]))
+        
+        # Insert distances into the correct index of the initial positions
+        self.initial_positions = np.insert(self.initial_positions,7,initial_orbital_phase_draws,axis=1) 
+
+    def initialize_and_run_inference_N_1(self,):
+        '''
+        Initializes and runs the inference on the results of the search
+        '''
+        Semi_Coherent_model = Semi_Coherent_Model_Inference(
+                                                            self.prior_bounds,
+                                                            self.data,
+                                                            self.psd_array,
+                                                            self.df,
+                                                            self.waveform_func,
+                                                            segment_number = 1,
+                                                            waveform_args=self.waveform_args)
+        
+        nwalkers = self.initial_positions.shape[0]
+        ndim = self.initial_positions.shape[1]
+
+        start = self.initial_positions
+
+        sampler = zeus.EnsembleSampler(nwalkers, 
+                                       ndim, 
+                                       Semi_Coherent_model.log_likelihood)
+        sampler.run_mcmc(start,self.num_steps)
+        chain = sampler.get_chain(flat=True)
+
+        # Save samples
+        np.savetxt(self.swarm_directory+'/posterior_samples.dat',chain)
+
+
+
+    def initialize_and_run_inference_Coherent(self,):
+        '''
+        Initializes and runs the inference on the results of the search
+        '''
+        Coherent_phase_maximised_inference_model = Coherent_Model_inference(
+                                                            self.prior_bounds,
+                                                            self.data,
+                                                            self.psd_array,
+                                                            self.df,
+                                                            self.waveform_func,
+                                                            waveform_args=self.waveform_args)
+        
+        nwalkers = self.initial_positions.shape[0]
+        ndim = self.initial_positions.shape[1]
+
+        start = self.initial_positions
+
+        sampler = zeus.EnsembleSampler(nwalkers, 
+                                       ndim, 
+                                       Coherent_phase_maximised_inference_model.log_likelihood)
+        sampler.run_mcmc(start,self.num_steps)
+        chain = sampler.get_chain(flat=True)
+
+        # Save samples
+        np.savetxt(self.swarm_directory+'/posterior_samples.dat',chain)
+        
