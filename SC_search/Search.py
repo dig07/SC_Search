@@ -600,7 +600,7 @@ class Post_Search_Inference_Zeus:
                  data_file_name,
                  swarm_directory,
                  num_steps=1000,
-                 Zeus_kwargs= None,
+                 Zeus_kwargs= {},
                  coherent_or_N_1='N_1',
                  Spread_multiplier=None):
         '''

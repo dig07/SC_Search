@@ -120,7 +120,7 @@ class Semi_Coherent_Model_Inference(PySO.Model):
         
         '''
         self.segment_number = segment_number
-        self.bounds = priors
+        self.bounds = np.array(priors)
         self.data = data
         self.psd_array = psd_array
         self.df = df 
@@ -152,19 +152,25 @@ class Semi_Coherent_Model_Inference(PySO.Model):
             float: The log likelihood (Any quantity to be optimised).
         
         '''
-        # Convert parameters from dict to list 
-        parameters_array = list(params) #[params[key] for key in list(params.keys())]
+        in_bounds = np.all(self.bounds[:,0]<params) and np.all(params<self.bounds[:,1])
 
-        # Add in orbital phase fixed so we can generate the waveform
-        parameters_array.insert(7,self.constant_initial_orbital_phase)
+        if not in_bounds:
+            return -np.inf
         
-        parameters_array = TaylorF2Ecc_mc_eta_to_m1m2(parameters_array)
-        
-        model = self.waveform(parameters_array,**self.waveform_args)
+        else:
+            # Convert parameters from dict to list 
+            parameters_array = list(params) #[params[key] for key in list(params.keys())]
 
-        func_vals = semi_coherent_logl(model,self.data,self.psd_array,self.df,self.d_inner_d,num_segments=self.segment_number)
+            # Add in orbital phase fixed so we can generate the waveform
+            parameters_array.insert(7,self.constant_initial_orbital_phase)
+            
+            parameters_array = TaylorF2Ecc_mc_eta_to_m1m2(parameters_array)
+            
+            model = self.waveform(parameters_array,**self.waveform_args)
 
-        return(func_vals)
+            func_vals = semi_coherent_logl(model,self.data,self.psd_array,self.df,self.d_inner_d,num_segments=self.segment_number)
+
+            return(func_vals)
     
 class Coherent_Model_inference(PySO.Model):
     '''
