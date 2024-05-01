@@ -189,7 +189,7 @@ class Search:
         for source in self.source_parameters:
 
             # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
-            source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source)
+            source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source.copy())
             
             # Turn logging on for the injection waveform so we can debug statements 
             injection_waveform_args = self.waveform_args.copy()
@@ -316,7 +316,7 @@ class Search:
         '''
         # Inject noiseless source with source params  
         # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
-        source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source_params)
+        source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source_params.copy())
         
         injection_waveform_args = self.waveform_args.copy()
         
@@ -342,17 +342,17 @@ class Search:
             final_positions = df_subset_final_iteration[Swarm_results_file['swarm_number'] == swarm_num]
 
             # Extract final positions of the swarm into numpy array, [:,3,-3] filters down just to the parameter space locations
-            parameter_space_positions = final_positions.to_numpy()[:,3:-3]
+            parameter_space_positions = final_positions.to_numpy()[:,2:-3]
 
             Semi_coherent_matches = []
             
             # For each location compute the coherent and N=1 coherent phase maximised overlap against the source parameter waveform. 
             for parameter_space_position in parameter_space_positions:
 
-                parameter_space_position = list(parameter_space_position)
+                parameter_space_position = list(parameter_space_position.copy())
 
                 # Add in distance fixed here so we can generate the waveform
-                #   Note this does not affect overlap at all, this is just a pracitcality to generate the waveform. 
+                #   Note this does not affect overlap at all, this is just a praciticality to generate the waveform. 
                 parameter_space_position.insert(2,100.e+6)
 
                 # Add in orbital phase fixed so we can generate the waveform
@@ -360,17 +360,16 @@ class Search:
                 parameter_space_position.insert(7,np.random.uniform(low=-np.pi,high=np.pi))
                 
                 # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
-                source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(parameter_space_position)
+                source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(parameter_space_position.copy())
                 
                 # Generate noiseless signal
                 signal= self.waveform_func(source_parameters_transformed,**injection_waveform_args)
     
                 # Check coherent-phase maximised overlap with the injection
-                Semi_coherent_matches.append(semi_coherent_match(signal,injection,self.psd_array,self.df,segment_number=1))
+                Semi_coherent_matches.append(semi_coherent_match(signal,injection,self.psd_array,self.df,num_segments=1))
 
             print('Swarm: ',swarm_num+1)
             print('Max Semi-Coherent match: ',np.max(Semi_coherent_matches))
-
 
 
 class Post_Search_Inference:
