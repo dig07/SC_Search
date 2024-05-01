@@ -15,7 +15,7 @@ import os
 
 from .Swarm_class import Semi_Coherent_Model, Semi_Coherent_Model_Inference, Coherent_Model_inference
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
-from .Semi_Coherent_Functions import upsilon_func
+from .Semi_Coherent_Functions import upsilon_func, semi_coherent_match, coherent_match
 from .Noise import *
 from .Waveforms import TaylorF2Ecc
 import PySO
@@ -306,6 +306,64 @@ class Search:
 
             # Save the final positions of the swarm
             final_positions.to_csv('Swarm_'+str(swarm_num+1)+'_inference/final_positions.csv')
+    
+    def final_match_against_truth(self,source_params):
+        '''
+        Compute the best match for each swarm against waveform generation by given set of params:
+
+        Args:
+            source_params (array): The source parameters to be used for the match computation.        
+        '''
+        # Inject noiseless source with source params  
+        # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
+        source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source_params)
+        
+        injection_waveform_args = self.waveform_args.copy()
+        
+        # Generate noiseless signal to compute matches against
+        injection= self.waveform_func(source_parameters_transformed,**injection_waveform_args)
+
+        # Directory where all the PySO results are dumped
+        Swarm_results_file =  pd.read_csv(self.PySO_kwargs['Output']+'/EnsembleEvolutionHistory.dat')
+
+        # Find interation number of final iteration
+        final_iteration = np.sort(np.unique(Swarm_results_file['IterationNumber']))[-1]
+
+        # Find final state
+        df_subset_final_iteration = Swarm_results_file[Swarm_results_file['IterationNumber'] == final_iteration]
+
+        # Unique swarms in the final state of the search
+        unique_swarm_numbers = np.unique(df_subset_final_iteration['swarm_number'])
+
+        print('---Maximum fitness values for each swarm---')
+        for swarm_num in unique_swarm_numbers: 
+
+            # Find the final positions of the swarm
+            final_positions = df_subset_final_iteration[Swarm_results_file['swarm_number'] == swarm_num]
+
+            # Extract final positions of the swarm into numpy array [3,-3] filters down just to the parameter space locations
+            parameter_space_positions = final_positions.to_numpy()[:,3:-3]
+
+            Coherent_matches = []
+            Semi_coherent_matches = []
+            
+            # For each location compute the coherent and N=1 coherent phase maximised overlap against the source parameter waveform. 
+            for parameter_space_position in parameter_space_positions:
+
+                # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
+                source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(parameter_space_position)
+                
+                # Generate noiseless signal
+                signal= self.waveform_func(source_parameters_transformed,**injection_waveform_args)
+    
+                # Check coherent and coherent-phase maximised overlap with the injection
+                Semi_coherent_matches.append(semi_coherent_match(signal,injection,self.psd_array,self.df,segment_number=1))
+                Coherent_matches.append(coherent_match(signal,injection,self.psd_array,self.df))
+
+            print('Swarm: ',swarm_num+1)
+            print('Max Semi-Coherent match: ',np.max(Semi_coherent_matches))
+            print('Max Coherent match: ',np.max(Coherent_matches))
+
 
 
 class Post_Search_Inference:
@@ -760,7 +818,7 @@ class Post_Search_Inference_Zeus:
         eta_draws = np.random.uniform(self.prior_bounds[1][0],self.prior_bounds[1][1],size=(self.initial_positions.shape[0]))
 
         # Overwrite eta parameter for initial positions
-        self.initial_positions[:,1] = eta_draws
+        self.initial_positions[:,1] = eta_draws 
 
     def initialize_and_run_inference_N_1(self,):
         '''
