@@ -847,7 +847,9 @@ class Post_Search_Inference_Zeus:
         sampler = zeus.EnsembleSampler(nwalkers, 
                                        ndim, 
                                        Semi_Coherent_model.log_likelihood,**self.zeus_kwargs)
-        sampler.run_mcmc(start,self.num_steps)
+        
+        sampler.run_mcmc(start,self.num_steps,callbacks=[zeus.callbacks.AutocorrelationCallback()])
+        
         chain = sampler.get_chain(flat=True)
 
         # Save samples
