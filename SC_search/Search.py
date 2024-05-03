@@ -668,7 +668,8 @@ class Post_Search_Inference_Zeus:
                  num_steps=1000,
                  Zeus_kwargs= {},
                  coherent_or_N_1='N_1',
-                 Spread_multiplier=None):
+                 Spread_multiplier=None,
+                 terminate_on_max_iter_or_IAT = 'max_iter'):
         '''
         Initializes a new instance of the Post Search Inference class.
 
@@ -686,6 +687,9 @@ class Post_Search_Inference_Zeus:
             coherent_or_N_1 (str, optional): A flag indicating whether to perform coherent or N-1 PE. Defaults to 'N_1'.
             Spread_multiplier (float, optional): A multiplier for the spread of the initial positions for the MCMC. Defaults to None.
                 Role is to make the particles in the swarm spread out a bit more before inference. 
+            terminate_on_max_iter_or_IAT (str, optional): A flag indicating whether to terminate the MCMC 
+                on the maximum number of iterations or when the integrated autocorrelation time passes the default 10 (zeus internal).
+                Defaults to 'max_iter', can also be 'IAT'.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -743,6 +747,7 @@ class Post_Search_Inference_Zeus:
 
         # If not coherent, ie N_1 no need to generate initial orbital phases as we do a phase maximisation anyway 
         
+        self.terminate_on_max_iter_or_IAT = terminate_on_max_iter_or_IAT
 
     def increase_initial_position_spread(self,Spread_multiplier):
         '''
@@ -848,8 +853,13 @@ class Post_Search_Inference_Zeus:
                                        ndim, 
                                        Semi_Coherent_model.log_likelihood,**self.zeus_kwargs)
         
-        sampler.run_mcmc(start,self.num_steps,callbacks=[zeus.callbacks.AutocorrelationCallback()])
-        
+
+        if self.terminate_on_max_iter_or_IAT = 'max_iter':
+            sampler.run_mcmc(start,self.num_steps)
+        elif self.terminate_on_max_iter_or_IAT = 'IAT':
+            # Set a max of 200,000 steps for the IAT to reach 10
+            sampler.run_mcmc(start,200000,callbacks=[zeus.callbacks.AutocorrelationCallback()])
+
         chain = sampler.get_chain(flat=True)
 
         # Save samples
@@ -877,9 +887,14 @@ class Post_Search_Inference_Zeus:
         sampler = zeus.EnsembleSampler(nwalkers, 
                                        ndim, 
                                        Coherent_phase_maximised_inference_model.log_likelihood,**self.zeus_kwargs)
-        sampler.run_mcmc(start,self.num_steps)
-        chain = sampler.get_chain(flat=True)
+   
+        if self.terminate_on_max_iter_or_IAT = 'max_iter':
+            sampler.run_mcmc(start,self.num_steps)
+        elif self.terminate_on_max_iter_or_IAT = 'IAT':
+            # Set a max of 200,000 steps for the IAT to reach 10
+            sampler.run_mcmc(start,200000,callbacks=[zeus.callbacks.AutocorrelationCallback()])
 
+        chain = sampler.get_chain(flat=True)       
         # Save samples
         np.savetxt(self.swarm_directory+'/posterior_samples.dat',chain)
         
