@@ -854,9 +854,9 @@ class Post_Search_Inference_Zeus:
                                        Semi_Coherent_model.log_likelihood,**self.zeus_kwargs)
         
 
-        if self.terminate_on_max_iter_or_IAT = 'max_iter':
+        if self.terminate_on_max_iter_or_IAT == 'max_iter':
             sampler.run_mcmc(start,self.num_steps)
-        elif self.terminate_on_max_iter_or_IAT = 'IAT':
+        elif self.terminate_on_max_iter_or_IAT == 'IAT':
             # Set a max of 200,000 steps for the IAT to reach 10
             sampler.run_mcmc(start,200000,callbacks=[zeus.callbacks.AutocorrelationCallback()])
 
@@ -888,9 +888,9 @@ class Post_Search_Inference_Zeus:
                                        ndim, 
                                        Coherent_phase_maximised_inference_model.log_likelihood,**self.zeus_kwargs)
    
-        if self.terminate_on_max_iter_or_IAT = 'max_iter':
+        if self.terminate_on_max_iter_or_IAT == 'max_iter':
             sampler.run_mcmc(start,self.num_steps)
-        elif self.terminate_on_max_iter_or_IAT = 'IAT':
+        elif self.terminate_on_max_iter_or_IAT == 'IAT':
             # Set a max of 200,000 steps for the IAT to reach 10
             sampler.run_mcmc(start,200000,callbacks=[zeus.callbacks.AutocorrelationCallback()])
 
