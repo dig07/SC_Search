@@ -426,7 +426,7 @@ class Search:
         
         min_v_html_string = min_v_df.to_html()
 
-        html_string = '<h1>Search results</h1> <br>'+main_html_string + '<br> <h1>Minimum Velcities</h1>'+ min_v_html_string
+        html_string = '<h1>Search results</h1> <br>'+main_html_string + '<br> <h1>Minimum Velocities</h1>'+ min_v_html_string
 
         # Dump html string to file
         with open(self.PySO_kwargs['Output']+'/search_results.html','x') as f:
