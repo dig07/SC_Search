@@ -371,6 +371,49 @@ class Search:
             print('Swarm: ',swarm_num+1)
             print('Max Semi-Coherent match: ',np.max(Semi_coherent_matches))
 
+    def search_results_to_html(self):
+        '''
+        Convert the results of the search to a HTML file for viewing. 
+        '''
+        PSO_stages = np.arange(len(self.segment_ladder))
+
+        N = self.segment_ladder
+
+        Omegas = self.PySO_kwargs['Omega']
+
+        Phip = self.PySO_kwargs['Phip']
+
+        Phig = self.PySO_kwargs['Phig']
+
+        Swarm_results_file =  pd.read_csv(self.PySO_kwargs['Output']+'/EnsembleEvolutionHistory.dat')
+
+        max_upsilons = []
+
+        for stage in PSO_stages:
+            # Filter down to this df 
+            df = Swarm_results_file[Swarm_results_file['HierarchicalModelNumber']==stage]
+
+            unique_swarm_numbers = np.unique(df['swarm_number'])
+            
+            upsilons_stage = []
+            # For each swarm extract the best upsilon value
+            for swarm in unique_swarm_numbers:
+                
+                # Filter down to this swarm
+                df_swarm = df[df['swarm_number']==swarm]
+
+                upsilons_stage.append(np.max(df_swarm['function_value']))
+
+            max_upsilons.append('/'.join(upsilons_stage))
+
+        # Create a dataframe to store the results
+        df = pd.DataFrame({'Stage':PSO_stages,'N':N,'Omega':Omegas,'Phip':Phip,'Phig':Phig,'Max_Upsilons':max_upsilons})
+
+        html_string = df.to_html()
+        
+        # Dump html string to file
+        with open(self.PySO_kwargs['Output']+'/search_results.html','x') as f:
+            f.write(html_string)
 
 class Post_Search_Inference:
     '''
