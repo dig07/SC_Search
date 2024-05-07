@@ -402,7 +402,7 @@ class Search:
                 # Filter down to this swarm
                 df_swarm = df[df['swarm_number']==swarm]
 
-                upsilons_stage.append(np.max(df_swarm['function_value']))
+                upsilons_stage.append(str(np.round(np.max(df_swarm['function_value']),1)))
 
             max_upsilons.append('/'.join(upsilons_stage))
 
