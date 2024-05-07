@@ -409,8 +409,25 @@ class Search:
         # Create a dataframe to store the results
         df = pd.DataFrame({'Stage':PSO_stages,'N':N,'Omega':Omegas,'Phip':Phip,'Phig':Phig,'Max_Upsilons':max_upsilons})
 
-        html_string = df.to_html()
+        main_html_string = df.to_html()
         
+        # Add on another table for minimum velocities 
+        minimum_velocities = np.array(self.PySO_kwargs['Minimum_velocities'])
+
+        min_v_df = pd.DataFrame({'Stage':PSO_stages,'N':N,
+                                'Mc':minimum_velocities[:,0],
+                                'eta':minimum_velocities[:,1],
+                                'beta': minimum_velocities[:,2],
+                                'lambda': minimum_velocities[:,3],
+                                'i': minimum_velocities[:,4],
+                                'psi': minimum_velocities[:,5],
+                                'f_low': minimum_velocities[:,6],
+                                'e0': minimum_velocities[:,7]})
+        
+        min_v_html_string = min_v_df.to_html()
+
+        html_string = main_html_string + min_v_html_string
+
         # Dump html string to file
         with open(self.PySO_kwargs['Output']+'/search_results.html','x') as f:
             f.write(html_string)
