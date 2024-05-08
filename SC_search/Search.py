@@ -334,6 +334,9 @@ class Search:
 
         # Unique swarms in the final state of the search
         unique_swarm_numbers = np.unique(df_subset_final_iteration['swarm_number'])
+        
+        # List used for results html file
+        self.max_matches_per_swarm = []
 
         print('---Maximum fitness values for each swarm---')
         for swarm_num in unique_swarm_numbers: 
@@ -367,6 +370,9 @@ class Search:
     
                 # Check coherent-phase maximised overlap with the injection
                 Semi_coherent_matches.append(semi_coherent_match(signal,injection,self.psd_array,self.df,num_segments=1))
+
+            
+            self.max_matches_per_swarm.append(np.max(Semi_coherent_matches))
 
             print('Swarm: ',swarm_num+1)
             print('Max Semi-Coherent match: ',np.max(Semi_coherent_matches))
@@ -426,7 +432,17 @@ class Search:
         
         min_v_html_string = min_v_df.to_html()
 
-        html_string = '<h1>Search results</h1> <br>'+main_html_string + '<br> <h1>Minimum Velocities</h1>'+ min_v_html_string
+        # If we have computed matches for the results against some truth waveform, add these onto the results 
+        try:
+            # Check if it exists, ie if we are computing the match at the end result against some truth 
+            self.max_matches_per_swarm
+            # Convert each match to string and round to 2 decimal places
+            self.max_matches_per_swarm = [str(np.round(match,2)) for match in self.max_matches_per_swarm]
+            matches_string = '<br> <h2>Best matches against injection: </h2> <br>'+' '.join(self.max_matches_per_swarm)
+        except NameError:
+            matches_string = ''
+
+        html_string = '<h1>Search results</h1> <br>'+main_html_string + '<br> <h1>Minimum Velocities</h1>'+ min_v_html_string + matches_string
 
         # Dump html string to file
         with open(self.PySO_kwargs['Output']+'/search_results.html','x') as f:
