@@ -938,9 +938,13 @@ class Post_Search_Inference_Zeus:
             sampler.run_mcmc(start,200000,callbacks=[zeus.callbacks.AutocorrelationCallback()])
 
         chain = sampler.get_chain(flat=True)
+        logl = sampler.get_log_prob(flat=True)
+
+        print('Max logl:',np.max(logl))
 
         # Save samples
         np.savetxt(self.swarm_directory+'/posterior_samples.dat',chain)
+        np.savetxt(self.swarm_directory+'/logl.dat',logl)
 
 
 
@@ -971,7 +975,13 @@ class Post_Search_Inference_Zeus:
             # Set a max of 200,000 steps for the IAT to reach 10
             sampler.run_mcmc(start,200000,callbacks=[zeus.callbacks.AutocorrelationCallback()])
 
-        chain = sampler.get_chain(flat=True)       
+        chain = sampler.get_chain(flat=True)
+        logl = sampler.get_log_prob(flat=True)
+
+        print('Max logl:',np.max(logl))
+
         # Save samples
         np.savetxt(self.swarm_directory+'/posterior_samples.dat',chain)
+        np.savetxt(self.swarm_directory+'/logl.dat',logl)
+
         
