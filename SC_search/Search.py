@@ -437,9 +437,10 @@ class Search:
             # Check if it exists, ie if we are computing the match at the end result against some truth 
             self.max_matches_per_swarm
             # Convert each match to string and round to 2 decimal places
-            self.max_matches_per_swarm = [str(np.round(match,2)) for match in self.max_matches_per_swarm]
-            matches_string = '<br> <h2>Best matches against injection: </h2> <br>'+' '.join(self.max_matches_per_swarm)
+            self.max_matches_per_swarm = [str(np.round(match,4)) for match in self.max_matches_per_swarm]
+            matches_string = '<br> <h2>Best matches against injection: </h2> <br>'+', '.join(self.max_matches_per_swarm)
         except NameError:
+            # If it does not exist ie we are not computing the match at the end result against some truth, just set to empty string
             matches_string = ''
 
         html_string = '<h1>Search results</h1> <br>'+main_html_string + '<br> <h1>Minimum Velocities</h1>'+ min_v_html_string + matches_string
