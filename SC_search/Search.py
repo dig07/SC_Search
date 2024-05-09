@@ -410,7 +410,7 @@ class Search:
 
                 upsilons_stage.append(str(np.round(np.max(df_swarm['function_value']),1)))
 
-            max_upsilons.append('/'.join(upsilons_stage))
+            max_upsilons.append(', '.join(upsilons_stage))
 
         # Create a dataframe to store the results
         df = pd.DataFrame({'Stage':PSO_stages,'N':N,'Omega':Omegas,'Phip':Phip,'Phig':Phig,'Max_Upsilons':max_upsilons})
