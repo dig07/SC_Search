@@ -226,13 +226,21 @@ class Coherent_Model_inference(PySO.Model):
             float: The log likelihood (Any quantity to be optimised).
         
         '''
-        # Convert parameters from dict to list 
-        parameters_array = list(params) # [params[key] for key in list(params.keys())]
+        in_bounds = np.all(self.bounds[:,0]<params) and np.all(params<self.bounds[:,1])
 
-        parameters_array = TaylorF2Ecc_mc_eta_to_m1m2(parameters_array)
-        
-        model = self.waveform(parameters_array,**self.waveform_args)
+        if not in_bounds:
 
-        func_vals = vanilla_log_likelihood(model,self.data,self.df,self.psd_array)
+            return -np.inf
+
+        else:
+
+            # Convert parameters from dict to list 
+            parameters_array = list(params) # [params[key] for key in list(params.keys())]
+
+            parameters_array = TaylorF2Ecc_mc_eta_to_m1m2(parameters_array)
+            
+            model = self.waveform(parameters_array,**self.waveform_args)
+
+            func_vals = vanilla_log_likelihood(model,self.data,self.df,self.psd_array)
 
         return(func_vals)

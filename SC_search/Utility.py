@@ -11,7 +11,11 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import matplotlib.lines as mlines
 import matplotlib.ticker as ticker
-import seaborn as sns
+
+try: 
+    import seaborn as sns
+except:
+    pass
 
 def component_masses_from_chirp_eta(mchirp, eta):
     """
