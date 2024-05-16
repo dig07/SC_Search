@@ -21,6 +21,7 @@ from .Waveforms import TaylorF2Ecc
 import PySO
 from .Veto import *
 from .Inference import dynesty_inference
+import networkx as nx
 
 class Search:
     '''
@@ -370,17 +371,46 @@ class Search:
                 source_params_transformed = TaylorF2Ecc_mc_eta_to_m1m2(best_positions[j,:].copy())
                 wf_2= self.waveform_func(source_params_transformed,**injection_waveform_args)
 
-                # compute match between them 
+                # compute coherent phase maximised match between them 
                 matches[i,j] = semi_coherent_match(wf_1,wf_2,self.psd_array,self.df,num_segments=1)
     
         print('Matches between swarms: \n')
         print(matches)
 
-        # Only uses the upper triangle as match(i,i) = 1 
-        # Triu ensures we dont get duplicates, ie match(i,j) is the same as match(j,i), ie match.T = match 
-        x, y = np.where(np.triu(matches,k=1)>0.98)
+        # Set anything less than the match threshold to be 0, ie make them "not connected"
+        matches[matches<match_threshold] = 0
+        
+        # Only combine swarms if there are any similar swarms
+        if np.any(matches)>match_threshold:
 
-        # np.unique(np.stack((x,y),axis=1),axis=1)
+            # Use graph networks to try to find unique combinations of swarms from the matches
+            G = nx.from_numpy_array(matches, create_using=nx.DiGraph)
+            H = G.to_undirected()
+            combined_swarms = list(nx.find_cliques(H))
+
+            for combined_swarm_index, swarm_indices in enumerate(combined_swarms):
+
+                # Make sure the new swarm has more than one swarm in it 
+
+                if len(swarm_indices)>1:
+                    
+                    print('Combining swarms: ',str(swarm_indices))
+                
+                    os.mkdir('Combined_swarm_'+str(combined_swarm_index+1)+'_inference')
+
+                    dataframes_to_be_combined = []
+
+                    for swarm_num in unique_swarm_numbers: 
+
+                        # Find the final positions of the swarm
+                        final_positions = df_subset_final_iteration[Swarm_results_file['swarm_number'] == swarm_num]
+                        dataframes_to_be_combined.append(final_positions)
+
+                    # Save the final positions of the swarm
+                    combined_df = pd.concat(dataframes_to_be_combined, ignore_index=True, axis=0)
+                    combined_df.to_csv('Combined_swarm_'+str(combined_swarm_index+1)+'_inference/final_positions.csv')
+
+
 
     def final_match_against_truth(self,source_params):
         '''
