@@ -306,7 +306,82 @@ class Search:
 
             # Save the final positions of the swarm
             final_positions.to_csv('Swarm_'+str(swarm_num+1)+'_inference/final_positions.csv')
+
+    def combine_swarms_on_match(self,match_threshold=0.98):
+        '''
+        Combine swarms based on the match threshold. 
+
+        If swarm i and swarm j have best particles which have a match(i,j) above the threshold then combine them. 
+        '''
     
+        injection_waveform_args = self.waveform_args.copy()
+    
+        # Directory where all the PySO results are dumped
+        Swarm_results_file =  pd.read_csv(self.PySO_kwargs['Output']+'/EnsembleEvolutionHistory.dat')
+
+        # Find interation number of final iteration
+        final_iteration = np.sort(np.unique(Swarm_results_file['IterationNumber']))[-1]
+
+        # Find final state
+        df_subset_final_iteration = Swarm_results_file[Swarm_results_file['IterationNumber'] == final_iteration]
+
+        # Unique swarms in the final state of the search
+        unique_swarm_numbers = np.unique(df_subset_final_iteration['swarm_number'])
+
+        # Best positions for each swarm
+        best_positions = np.zeros((unique_swarm_numbers.size,10))# 10 D parameter space (adding in artificial orbital phase and distance for waveform generation)
+
+        for swarm_index,swarm_num in enumerate(unique_swarm_numbers): 
+
+            # Find the final positions of the swarm
+            final_positions = df_subset_final_iteration[Swarm_results_file['swarm_number'] == swarm_num]
+
+            # Extract final positions of the swarm into numpy array, [:,2,-3] filters down just to the parameter space locations 
+            parameter_space_positions = final_positions.to_numpy()[:,2:-3]
+
+            # Find particle position in this swarm with max upsilon
+            function_values = final_positions.to_numpy()[:,-3]
+
+            best_particle_index = np.argmax(function_values)
+
+            best_particle_position = list(parameter_space_positions[best_particle_index,:])
+
+            # Add in distance fixed here so we can generate the waveform
+            #   Note this does not affect overlap at all, this is just a practicality to generate the waveform. 
+            best_particle_position.insert(2,100.e+6)
+
+            # Add in orbital phase fixed so we can generate the waveform
+            #   Note the value we pick here will not affect the phase maximised overlap as it is one segment and phase maximised. 
+            best_particle_position.insert(7,np.random.uniform(low=-np.pi,high=np.pi))
+
+            best_positions[swarm_index,:]  = np.array(best_particle_position)
+
+        # Matrix to hold best match between swarm i and swarm j
+        matches = np.zeros((unique_swarm_numbers.size,unique_swarm_numbers.size))
+
+        for i in range(best_positions.shape[0]):
+            for j in range(best_positions.shape[0]):
+                # Generate i and j waveforms 
+                # wf 1
+                source_params_transformed = TaylorF2Ecc_mc_eta_to_m1m2(best_positions[i,:].copy())
+                wf_1= self.waveform_func(source_params_transformed,**injection_waveform_args)
+
+                # wf 2
+                source_params_transformed = TaylorF2Ecc_mc_eta_to_m1m2(best_positions[j,:].copy())
+                wf_2= self.waveform_func(source_params_transformed,**injection_waveform_args)
+
+                # compute match between them 
+                matches[i,j] = semi_coherent_match(wf_1,wf_2,self.psd_array,self.df,num_segments=1)
+    
+        print('Matches between swarms: \n')
+        print(matches)
+
+        # Only uses the upper triangle as match(i,i) = 1 
+        # Triu ensures we dont get duplicates, ie match(i,j) is the same as match(j,i), ie match.T = match 
+        x, y = np.where(np.triu(matches,k=1)>0.98)
+
+        # np.unique(np.stack((x,y),axis=1),axis=1)
+
     def final_match_against_truth(self,source_params):
         '''
         Compute the best match for each swarm against waveform generation by given set of params:

@@ -200,7 +200,7 @@ class Coherent_Model_inference(PySO.Model):
             waveform_function (function): The waveform function to be used.
             waveform_args (dict, optional): The arguments for the waveform function. Defaults to None.
         '''
-        self.bounds = priors
+        self.bounds = np.array(priors)
         self.data = data
         self.psd_array = psd_array
         self.df = df 
@@ -233,7 +233,6 @@ class Coherent_Model_inference(PySO.Model):
             return -np.inf
 
         else:
-
             # Convert parameters from dict to list 
             parameters_array = list(params) # [params[key] for key in list(params.keys())]
 
