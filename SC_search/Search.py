@@ -400,7 +400,8 @@ class Search:
 
                     dataframes_to_be_combined = []
 
-                    for swarm_num in unique_swarm_numbers: 
+                    # Concatenate the final swarm positions of all the swarms in the combined swarm
+                    for swarm_num in swarm_indices: 
 
                         # Find the final positions of the swarm
                         final_positions = df_subset_final_iteration[Swarm_results_file['swarm_number'] == swarm_num]
