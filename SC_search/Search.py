@@ -282,15 +282,22 @@ class Search:
 
         PySO_search.Run()
 
-    def postprocess_seperate_inferences(self,):
+    def postprocess_seperate_inferences(self,crashed=False):
         '''
         Read in the results of the PySO_search and seperate into multiple folders where inferences for each will be done. 
+
+        Args:
+            crashed (bool, optional): A flag indicating whether the search crashed/timed out, if so use the final iteration -1 as the 
+            real final iteration, as this will be the last iteration that is complete in the search data file. Defaults to False.
         '''
         # Directory where all the PySO results are dumped
         Swarm_results_file =  pd.read_csv(self.PySO_kwargs['Output']+'/EnsembleEvolutionHistory.dat')
 
         # Find interation number of final iteration
         final_iteration = np.sort(np.unique(Swarm_results_file['IterationNumber']))[-1]
+
+        if crashed == True:
+            final_iteration = final_iteration - 1
 
         # Find final state
         df_subset_final_iteration = Swarm_results_file[Swarm_results_file['IterationNumber'] == final_iteration]
@@ -308,11 +315,16 @@ class Search:
             # Save the final positions of the swarm
             final_positions.to_csv('Swarm_'+str(swarm_num+1)+'_inference/final_positions.csv')
 
-    def combine_swarms_on_match(self,match_threshold=0.98):
+    def combine_swarms_on_match(self,match_threshold=0.98,crashed=False):
         '''
         Combine swarms based on the match threshold. 
 
         If swarm i and swarm j have best particles which have a match(i,j) above the threshold then combine them. 
+
+        Args:
+            match_threshold (float, optional): The threshold above which to combine swarms. Defaults to 0.98.
+            crashed (bool, optional): A flag indicating whether the search crashed/timed out, if so use the final iteration -1 as the 
+            real final iteration, as this will be the last iteration that is complete in the search data file. Defaults to False.
         '''
     
         injection_waveform_args = self.waveform_args.copy()
@@ -322,6 +334,9 @@ class Search:
 
         # Find interation number of final iteration
         final_iteration = np.sort(np.unique(Swarm_results_file['IterationNumber']))[-1]
+
+        if crashed == True:
+            final_iteration = final_iteration - 1
 
         # Find final state
         df_subset_final_iteration = Swarm_results_file[Swarm_results_file['IterationNumber'] == final_iteration]
@@ -413,12 +428,14 @@ class Search:
 
 
 
-    def final_match_against_truth(self,source_params):
+    def final_match_against_truth(self,source_params,crashed=False):
         '''
         Compute the best match for each swarm against waveform generation by given set of params:
 
         Args:
-            source_params (array): The source parameters to be used for the match computation.        
+            source_params (array): The source parameters to be used for the match computation. 
+            crashed (bool, optional): A flag indicating whether the search crashed/timed out, if so use the final iteration -1 as the
+            real final iteration, as this will be the last iteration that is complete in the search data file. Defaults to False.       
         '''
         # Inject noiseless source with source params  
         # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
@@ -434,6 +451,9 @@ class Search:
 
         # Find interation number of final iteration
         final_iteration = np.sort(np.unique(Swarm_results_file['IterationNumber']))[-1]
+
+        if crashed == True:
+            final_iteration = final_iteration - 1
 
         # Find final state
         df_subset_final_iteration = Swarm_results_file[Swarm_results_file['IterationNumber'] == final_iteration]
