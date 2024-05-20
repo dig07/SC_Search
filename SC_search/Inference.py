@@ -63,7 +63,7 @@ class dynesty_inference():
 
         # TODO: Change the function being injected to the direct FFT grid (no interpolation) one just to be rigorous 
         # Search is being tuned for these so hardcoded for now
-        if self.include_spin == False
+        if include_spin == False:
             self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
         else: 
             self.waveform_func = TaylorF2EccSpin.BBHx_response_interpolate
