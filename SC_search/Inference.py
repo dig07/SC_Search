@@ -10,7 +10,7 @@ from .Swarm_class import Semi_Coherent_Model
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import vanilla_log_likelihood,semi_coherent_logl,noise_weighted_inner_product
 from .Noise import *
-from .Waveforms import TaylorF2Ecc
+from .Waveforms import TaylorF2Ecc, TaylorF2EccSpin
 
 import dynesty
 from dynesty import utils as dyfunc
@@ -29,7 +29,8 @@ class dynesty_inference():
                     segment = None,
                     load_data_file=True,
                     data_file_name=None, 
-                    include_noise=False):
+                    include_noise=False,
+                    include_spin=False):
         '''
         Initialize the Inference object.
 
@@ -42,6 +43,7 @@ class dynesty_inference():
             load_data_file (bool): Whether to load a data file or generate injection data.
             data_file_name (str): The name of the data file to load.
             include_noise (bool): Whether to include noise in the generated injection data.
+            include_spin (bool): Whether to include spin in the parameter estimation. 
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -60,9 +62,13 @@ class dynesty_inference():
         self.generate_psd()
 
         # TODO: Change the function being injected to the direct FFT grid (no interpolation) one just to be rigorous 
-
         # Search is being tuned for these so hardcoded for now
-        self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+        if self.include_spin == False
+            self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+        else: 
+            self.waveform_func = TaylorF2EccSpin.BBHx_response_interpolate
+
+        # Waveform arguments (same between both spin-aligned and no spin waveforms)
         self.waveform_args = {'freqs_sparse':self.freqs_sparse,
                               'freqs_dense':self.freqs,
                               'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
