@@ -44,10 +44,22 @@ class Semi_Coherent_Model(PySO.Model):
         self.waveform = waveform_function
         self.waveform_args = waveform_args
 
+
         if spin_waveform == True:
             # If using spin waveform also search over the spin parameters
-            self.names.append('chi1')
-            self.names.append('chi2')
+
+            self.names = ['Mc',
+                            'eta',
+                            #'D',
+                            'beta',
+                            'lambda',
+                            'inc',#cos(i)
+                            'polarization',
+                            # 'Initial orbital phase',
+                            'f_low',
+                            'e0',
+                            'chi1',
+                            'chi2']
 
         # We hold  initial orbital phase and distance fixed as distance factors out in the search statistic,
         #    and initial orbital phase is unmeasured due to the semi-coherent phase maximisation 
@@ -122,6 +134,7 @@ class Semi_Coherent_Model_Inference(PySO.Model):
             segment_number (int): The segment number of the semi-coherent search. Defaults to 1. 
             constant_initial_orbital_phase (float, optional): The constant initial orbital phase. Defaults to 0.
             waveform_args (dict, optional): The arguments for the waveform function. Defaults to None.
+            spin_waveform (bool, optional): Whether to use the spin waveform. Defaults to False.
         
         '''
         self.segment_number = segment_number
@@ -134,9 +147,19 @@ class Semi_Coherent_Model_Inference(PySO.Model):
 
         if spin_waveform == True:
             # If using spin waveform also search over the spin parameters
-            self.names.append('chi1')
-            self.names.append('chi2')
 
+            self.names = ['Mc',
+                            'eta',
+                            'D',
+                            'beta',
+                            'lambda',
+                            'inc',#cos(i)
+                            'polarization',
+                            # 'Initial orbital phase',
+                            'f_low',
+                            'e0',
+                            'chi1',
+                            'chi2']
 
         # Inner product of data with itself for the inference log likelihood
         self.d_inner_d = noise_weighted_inner_product(self.data, self.data, self.df, self.psd_array, phase_maximize=False).item()
@@ -218,10 +241,22 @@ class Coherent_Model_inference(PySO.Model):
         self.waveform = waveform_function
         self.waveform_args = waveform_args
 
+
         if spin_waveform == True:
             # If using spin waveform also search over the spin parameters
-            self.names.append('chi1')
-            self.names.append('chi2')
+
+            self.names = ['Mc',
+                            'eta',
+                            'D',
+                            'beta',
+                            'lambda',
+                            'inc',#cos(i)
+                            'polarization',
+                            'Initial orbital phase',
+                            'f_low',
+                            'e0',
+                            'chi1',
+                            'chi2']
 
 
     def log_likelihood(self, params):
