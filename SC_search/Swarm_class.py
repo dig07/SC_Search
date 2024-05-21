@@ -21,7 +21,7 @@ class Semi_Coherent_Model(PySO.Model):
     'e0']
 
     def __init__(self,segment_number,priors,data,psd_array,df,waveform_function,
-                 constant_initial_orbital_phase= 0, constant_distance=100.e+6, waveform_args=None,masking=False):
+                 constant_initial_orbital_phase= 0, constant_distance=100.e+6, waveform_args=None,masking=False,spin_waveform=False):
         '''
         Args:
             segment_number (int): The segment number of the semi-coherent search.
@@ -34,7 +34,7 @@ class Semi_Coherent_Model(PySO.Model):
             constant_distance (float, optional): The constant distance. Defaults to 100.e+6.
             waveform_args (dict, optional): The arguments for the waveform function. Defaults to None.
             masking (bool, optional): Whether to use the masked version of the upsilon statistic (Only really good at high N). Defaults to False
-        
+            spin_waveform (bool, optional): Whether to use the spin waveform. Defaults to False.
         '''
         self.segment_number = segment_number
         self.bounds = priors
@@ -43,6 +43,11 @@ class Semi_Coherent_Model(PySO.Model):
         self.df = df 
         self.waveform = waveform_function
         self.waveform_args = waveform_args
+
+        if spin_waveform == True:
+            # If using spin waveform also search over the spin parameters
+            self.names.append('chi1')
+            self.names.append('chi2')
 
         # We hold  initial orbital phase and distance fixed as distance factors out in the search statistic,
         #    and initial orbital phase is unmeasured due to the semi-coherent phase maximisation 
@@ -106,7 +111,7 @@ class Semi_Coherent_Model_Inference(PySO.Model):
     'e0']
 
     def __init__(self,priors,data,psd_array,df,waveform_function,segment_number=1,
-                 constant_initial_orbital_phase= 0, waveform_args=None):
+                 constant_initial_orbital_phase= 0, waveform_args=None,spin_waveform=False):
         '''
         Args:
             priors (list): The priors bounds for the inference. 
@@ -126,6 +131,12 @@ class Semi_Coherent_Model_Inference(PySO.Model):
         self.df = df 
         self.waveform = waveform_function
         self.waveform_args = waveform_args
+
+        if spin_waveform == True:
+            # If using spin waveform also search over the spin parameters
+            self.names.append('chi1')
+            self.names.append('chi2')
+
 
         # Inner product of data with itself for the inference log likelihood
         self.d_inner_d = noise_weighted_inner_product(self.data, self.data, self.df, self.psd_array, phase_maximize=False).item()
@@ -190,7 +201,7 @@ class Coherent_Model_inference(PySO.Model):
     'f_low',
     'e0']
 
-    def __init__(self,priors,data,psd_array,df,waveform_function,waveform_args=None):
+    def __init__(self,priors,data,psd_array,df,waveform_function,waveform_args=None,spin_waveform=False):
         '''
         Args:
             priors (list): The priors bounds for the inference. 
@@ -206,6 +217,12 @@ class Coherent_Model_inference(PySO.Model):
         self.df = df 
         self.waveform = waveform_function
         self.waveform_args = waveform_args
+
+        if spin_waveform == True:
+            # If using spin waveform also search over the spin parameters
+            self.names.append('chi1')
+            self.names.append('chi2')
+
 
     def log_likelihood(self, params):
         '''

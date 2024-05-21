@@ -17,7 +17,7 @@ from .Swarm_class import Semi_Coherent_Model, Semi_Coherent_Model_Inference, Coh
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import upsilon_func, semi_coherent_match, coherent_match
 from .Noise import *
-from .Waveforms import TaylorF2Ecc
+from .Waveforms import TaylorF2Ecc, TaylorF2EccSpin
 import PySO
 from .Veto import *
 from .Inference import dynesty_inference
@@ -41,7 +41,8 @@ class Search:
                  load_data_file = False,
                  data_file_name = None,
                  noise_only_injection = False,
-                 masking = None):
+                 masking = None,
+                 include_spin = False):
         '''
         Initializes a new instance of the Search class.
 
@@ -60,6 +61,7 @@ class Search:
             data_file_name (str, optional): The name of the file containing the data to be searched over.
             noise_only_injection (bool, optional): A flag indicating whether to inject noise only. Defaults to False.  
             masking (list, optional): A list of booleans indicating wether to use the masked upsilon function at each segment. Defaults to [False]*len(segment_ladder).
+            include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -85,7 +87,14 @@ class Search:
         # TODO: Change the function being injected to the direct FFT grid (no interpolation) one just to be rigorous 
 
         # Search is being tuned for these so hardcoded for now
-        self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+        if include_spin == True:
+            self.waveform_func = TaylorF2EccSpin.BBHx_response_interpolate
+            self.Ndim = 12 # 12D parameter space (TaylorF2+e0+chi1+chi2)
+            self.spin_waveform = True
+        else:
+            self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+            self.Ndim = 10 # 12D parameter space (TaylorF2+e0+chi1+chi2)
+            self.spin_waveform = False
         self.waveform_args = {'freqs_sparse':self.freqs_sparse,
                               'freqs_dense':self.freqs,
                               'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
@@ -273,7 +282,8 @@ class Search:
                                                             self.psd_array,
                                                             self.df,
                                                             self.waveform_func,
-                                                            waveform_args=self.waveform_args,masking=self.masking_ladder[segment_index]) for segment_index,segment_number in enumerate(self.segment_ladder)]
+                                                            waveform_args=self.waveform_args,masking=self.masking_ladder[segment_index],
+                                                            spin_waveform=self.spin_waveform) for segment_index,segment_number in enumerate(self.segment_ladder)]
         
         PySO_search = PySO.HierarchicalSwarmHandler(self.Semi_Coherent_classes,
                                 self.PySO_num_swarms,# Number of initial swarms
@@ -345,7 +355,7 @@ class Search:
         unique_swarm_numbers = np.unique(df_subset_final_iteration['swarm_number'])
 
         # Best positions for each swarm
-        best_positions = np.zeros((unique_swarm_numbers.size,10))# 10 D parameter space (adding in artificial orbital phase and distance for waveform generation)
+        best_positions = np.zeros((unique_swarm_numbers.size,self.Ndim))# Full Dimensional parameter space (adding in artificial orbital phase and distance for waveform generation)
 
         for swarm_index,swarm_num in enumerate(unique_swarm_numbers): 
 
@@ -556,6 +566,11 @@ class Search:
                                 'f_low': minimum_velocities[:,6],
                                 'e0': minimum_velocities[:,7]})
         
+        if self.spin_waveform == True:
+            # Add in the extra parameters for spin 
+            min_v_df['chi1'] = minimum_velocities[:,8]
+            min_v_df['chi2'] = minimum_velocities[:,9]
+        
         min_v_html_string = min_v_df.to_html()
 
         # If we have computed matches for the results against some truth waveform, add these onto the results 
@@ -574,283 +589,6 @@ class Search:
         # Dump html string to file
         with open(self.PySO_kwargs['Output']+'/search_results.html','x') as f:
             f.write(html_string)
-
-class Post_Search_Inference:
-    '''
-    Class to perform inference on the results of the search.
-        Each swarm from the search is loaded in and inference is performed on it using the 
-        Affine-invariance MCMC sampling algorithm implemented within PySO.
-
-    Harcoded to the N-1, phase maximised coherent log likelihood. 
-
-    '''        
-    def __init__(self, 
-                 frequency_series_dict, 
-                 prior_bounds, 
-                 data_file_name,
-                 swarm_directory,
-                 PySO_MCMC_kwargs,
-                 coherent_or_N_1='N_1',
-                 Spread_multiplier=None):
-        '''
-        Initializes a new instance of the Post Search Inference class.
-
-        Parameters:
-            frequency_series_dict (dict): A dictionary containing frequency series data. Also contains information about the LISA mission such as
-                time of observation etc. 
-            prior_bounds (list): A list of prior bounds for the inference
-            data_file_name (str): The name of the file containing the data.
-            swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
-            PySO_MCMC_kwargs (dict): A dictionary containing PySO MMCMC keyword arguments.
-            coherent_or_N_1 (str, optional): A flag indicating whether to perform coherent or N-1 PE. Defaults to 'N_1'.
-            Spread_multiplier (float, optional): A multiplier for the spread of the initial positions for the MCMC. Defaults to None.
-                Role is to make the particles in the swarm spread out a bit more before inference. 
-        '''
-
-        self.frequency_series_dict = frequency_series_dict
-        
-        self.prior_bounds = prior_bounds
-
-        self.PySO_MCMC_kwargs = PySO_MCMC_kwargs
-
-        # Generate CPU and GPU frequency grids
-        self.generate_frequency_grids()
-
-        # Generate PSD
-        self.generate_psd()
-
-        # Search is being tuned for these so hardcoded for now
-        self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
-        self.waveform_args = {'freqs_sparse':self.freqs_sparse,
-                              'freqs_dense':self.freqs,
-                              'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
-                              'f_high':self.fmax,
-                              'T_obs':self.T_obs,
-                              'TDIType':'AET',
-                              'logging': False}
-
-        # Load in data
-        self.data = cp.asarray(np.load(data_file_name))
-
-        self.swarm_directory = swarm_directory
-
-        # Load positions from final iteration of the search for one swarm
-            # Note this does not include distances!!! Since the search statistic does not search over that
-        self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:,3:-3]
-
-
-        if Spread_multiplier != None:
-            # Increase the spread of the initial positions from the means
-            self.increase_initial_position_spread(Spread_multiplier)
-
-        # Draw distances from prior and insert into initial positions
-        self.draw_distances_from_prior()
-
-        if coherent_or_N_1 == 'Coherent':
-
-            # Draw initial orbital phases for the coherent PE if requested
-            self.draw_initial_orbital_phases()
-
-        # If not coherent, ie N_1 no need to generate initial orbital phases as we do a phase maximisation anyway 
-        
-
-    def increase_initial_position_spread(self,Spread_multiplier):
-        '''
-        Multiply the distance of each particle from the mean of the swarm by a factor of the spread multiplier.
-        '''
-
-        # Mean across whole swarm of positions across each dimension 
-        axis_means = np.mean(self.initial_positions,axis=0)
-        self.initial_positions = axis_means + Spread_multiplier*(self.initial_positions - axis_means)
-
-
-
-    def generate_frequency_grids(self,):
-        '''
-        Generates the dense and sparse frequency grids for search. 
-        Stores both on CPU and GPU.         
-        '''
-
-        # Initialising values for frequency grid
-        self.fmin = self.frequency_series_dict['fmin']
-        self.fmax = self.frequency_series_dict['fmax']
-        self.T_obs = self.frequency_series_dict['T_obs']
-
-        # Downsampling factor is used for the sparse frequency grid for interpolation
-        self.downsampling_factor = self.frequency_series_dict['downsampling_factor']
-
-        # Generating frequency grid (dense)
-        self.df = 1/self.T_obs
-
-        self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
-        self.freqs_on_CPU = self.freqs.get() # On CPU
-
-        self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU
-
-        self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
-
-    def generate_psd(self,):
-        '''
-        Generates the PSD for the search.
-
-        - Harcoded to Michelson PSD for now 
-        '''
-        # Generate the PSD
-        Sdisp = Sdisp_SciRD(self.freqs_on_CPU)
-        Sopt = Sopt_SciRD(self.freqs_on_CPU)
-        self.psd_A = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
-        self.psd_E = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
-        self.psd_T = psd_TX(self.freqs_on_CPU,Sdisp,Sopt)
-
-        self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
-    
-    def draw_distances_from_prior(self,):
-        '''
-        Draws a distances from the prior and fills it into the initial guesses for the inference. 
-            As the search does not search over distance, this is a necessary step. 
-        '''
-        distance_draws = np.random.uniform(self.prior_bounds[2][0],self.prior_bounds[2][1],size=(self.initial_positions.shape[0]))
-        
-        # Insert distances into the correct index of the initial positions
-        self.initial_positions = np.insert(self.initial_positions,2,distance_draws,axis=1)
-
-    def draw_initial_orbital_phases(self,):
-        '''
-        Draws initial orbital phases from a uniform distribution and fills it into the initial guesses for the inference. 
-            As the search does not search over initial orbital phase, this is a necessary step. 
-
-        Only used for coherent post search PE. 
-        '''
-        initial_orbital_phase_draws = np.random.uniform(self.prior_bounds[7][0],self.prior_bounds[7][1],size=(self.initial_positions.shape[0]))
-        
-        # Insert distances into the correct index of the initial positions
-        self.initial_positions = np.insert(self.initial_positions,7,initial_orbital_phase_draws,axis=1) 
-
-    def initialize_and_run_inference_N_1(self,):
-        '''
-        Initializes and runs the inference on the results of the search
-        '''
-        Coherent_phase_maximised_inference_model = Semi_Coherent_Model_Inference(
-                                                            self.prior_bounds,
-                                                            self.data,
-                                                            self.psd_array,
-                                                            self.df,
-                                                            self.waveform_func,
-                                                            segment_number = 1,
-                                                            waveform_args=self.waveform_args)
-        
-        sampler = PySO.Swarm(Coherent_phase_maximised_inference_model,
-                        self.initial_positions.shape[0], # Num particless
-                        Initialguess = self.initial_positions, # Initial guess
-                        Output = self.swarm_directory,
-                        **self.PySO_MCMC_kwargs)
-
-        sampler.Run()
-
-        # Load in swarm history 
-        posterior_samples_from_search = pd.read_csv(self.swarm_directory+'/SwarmEvolutionHistory.dat').to_numpy()[:,1:-1]
-
-        # Save samples 
-        np.savetxt(self.swarm_directory+'/posterior_samples.dat',posterior_samples_from_search) 
-
-    def initialize_and_run_inference_Coherent(self,):
-        '''
-        Initializes and runs the inference on the results of the search
-        '''
-        Coherent_phase_maximised_inference_model = Coherent_Model_inference(
-                                                            self.prior_bounds,
-                                                            self.data,
-                                                            self.psd_array,
-                                                            self.df,
-                                                            self.waveform_func,
-                                                            waveform_args=self.waveform_args)
-        
-        sampler = PySO.Swarm(Coherent_phase_maximised_inference_model,
-                        self.initial_positions.shape[0], # Num particless
-                        Initialguess = self.initial_positions, # Initial guess
-                        Output = self.swarm_directory,
-                        **self.PySO_MCMC_kwargs)
-
-        sampler.Run()
-
-        # Load in swarm history 
-        posterior_samples_from_search = pd.read_csv(self.swarm_directory+'/SwarmEvolutionHistory.dat').to_numpy()[:,1:-1]
-
-        # Save samples 
-        np.savetxt(self.swarm_directory+'/posterior_samples.dat',posterior_samples_from_search) 
-
-class Post_Search_Inference_Dynesty:
-    '''
-    Class to perform inference on the results of the search.
-        Very simple class that uses the results of the search to generate some uniform prior bounds
-
-    Harcoded to the N-1, phase maximised coherent log likelihood. 
-
-    '''        
-    def __init__(self, 
-                 frequency_series_dict, 
-                 data_file_name,
-                 swarm_directory,
-                 distance_prior_bounds,
-                 nlive=1000):
-        '''
-        Initializes a new instance of the Post Search Inference class using dynesty for the inference
-
-        Parameters:
-            frequency_series_dict (dict): A dictionary containing frequency series data. Also contains information about the LISA mission such as
-                time of observation etc. 
-            prior_bounds (list): A list of prior bounds for the inference
-            data_file_name (str): The name of the file containing the data.
-            swarm_directory (str): The directory containing the results of the search for the swarm to be inferred over.
-            distance_prior_bounds (array): [min,max] bounds for the distance prior.
-            coherent_or_N_1 (str, optional): A flag indicating whether to perform coherent or N-1 PE. Defaults to 'N_1'.
-            Spread_multiplier (float, optional): A multiplier for the spread of the initial positions for the MCMC. Defaults to None.
-                Role is to make the particles in the swarm spread out a bit more before inference.
-            nlive (int, optional): Number of live points for dynesty. Defaults to 1000.
-        '''
-
-        self.frequency_series_dict = frequency_series_dict
-
-        # Load in data
-        self.data = cp.asarray(np.load(data_file_name))
-
-        self.swarm_directory = swarm_directory
-
-        #  Generate priors from the search results
-        # Load positions from final iteration of the search, use these to compute priors. 
-            # Note this does not include distances!!! Since the search statistic does not search over that
-        self.initial_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()[:,3:-3]
-
-        # Generate priors for all params from end of search (-Distance,initial orbital phase)
-        self.priors = np.zeros((8,2))
-        for i in range(8):
-            self.priors[i,0] = np.min(self.initial_positions[:,i])
-            self.priors[i,1] = np.max(self.initial_positions[:,i])
-        
-        # Insert distance prior bounds manually
-        self.priors = np.insert(self.priors,2,distance_prior_bounds,axis=0)
-
-        # Insert physical initial orbital phase prior bounds manually
-        self.priors = np.insert(self.priors,7,np.array([-np.pi,np.pi]),axis=0)
-
-        # Reset priors for inclination + polarization to be the whole physical range
-        self.priors[5] = np.array([0,np.pi])# inc
-        self.priors[6] = np.array([-np.pi,0])# pol (not sure about the limits here)
-
-        print('Final prior setup for sampling: \n')
-        print(self.priors)
-
-        self.nlive = nlive
-        
-        self.inference_object = dynesty_inference(self.frequency_series_dict,
-                                                  self.priors,self.nlive,load_data_file=True,data_file_name=data_file_name)
-        
-    def run_sampler(self,):
-        '''
-        Run the dynesty sampler
-        '''
-        sampler_results = self.inference_object.run_sampler()
-        equally_weighted_samples = self.inference_object.resample_and_save(sampler_results)
 
 
 class Post_Search_Inference_Zeus:
@@ -872,7 +610,8 @@ class Post_Search_Inference_Zeus:
                  Zeus_kwargs= {},
                  coherent_or_N_1='N_1',
                  Spread_multiplier=None,
-                 terminate_on_max_iter_or_IAT = 'max_iter'):
+                 terminate_on_max_iter_or_IAT = 'max_iter',
+                 include_spin = False):
         '''
         Initializes a new instance of the Post Search Inference class.
 
@@ -893,6 +632,7 @@ class Post_Search_Inference_Zeus:
             terminate_on_max_iter_or_IAT (str, optional): A flag indicating whether to terminate the MCMC 
                 on the maximum number of iterations or when the integrated autocorrelation time passes the default 10 (zeus internal).
                 Defaults to 'max_iter', can also be 'IAT'.
+            include_spin (bool, optional): A flag indicating whether to include spin parameters in the inference. Defaults to False.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -910,7 +650,15 @@ class Post_Search_Inference_Zeus:
         self.generate_psd()
 
         # Search is being tuned for these so hardcoded for now
-        self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+        if include_spin == True:
+            self.waveform_func = TaylorF2EccSpin.BBHx_response_interpolate
+            self.Ndim = 12 # 12D parameter space (TaylorF2+e0+chi1+chi2)
+            self.spin_waveform = True
+        else:
+            self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
+            self.Ndim = 10 # 12D parameter space (TaylorF2+e0+chi1+chi2)
+            self.spin_waveform = False
+
         self.waveform_args = {'freqs_sparse':self.freqs_sparse,
                               'freqs_dense':self.freqs,
                               'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
@@ -1045,7 +793,8 @@ class Post_Search_Inference_Zeus:
                                                             self.df,
                                                             self.waveform_func,
                                                             segment_number = 1,
-                                                            waveform_args=self.waveform_args)
+                                                            waveform_args=self.waveform_args,
+                                                            spin_waveform=self.spin_waveform)
         
         nwalkers = self.initial_positions.shape[0]
         ndim = self.initial_positions.shape[1]
@@ -1084,7 +833,8 @@ class Post_Search_Inference_Zeus:
                                                             self.psd_array,
                                                             self.df,
                                                             self.waveform_func,
-                                                            waveform_args=self.waveform_args)
+                                                            waveform_args=self.waveform_args,
+                                                            spin_waveform=self.spin_waveform)
         
         nwalkers = self.initial_positions.shape[0]
         ndim = self.initial_positions.shape[1]
