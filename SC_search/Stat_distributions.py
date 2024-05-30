@@ -11,10 +11,8 @@ except ImportError:
 import scipy
 
 import matplotlib.pyplot as plt
-import scienceplots 
 import matplotlib
-matplotlib.rcParams.update({'font.size': 20})
-plt.style.use('science')
+
 
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import upsilon_func
