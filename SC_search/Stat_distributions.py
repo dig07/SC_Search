@@ -18,6 +18,7 @@ plt.style.use('science')
 
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import upsilon_func
+from .Semi_Coherent_Functions import noise_weighted_inner_product
 from .Noise import *
 from .Waveforms import TaylorF2Ecc
 
@@ -175,7 +176,7 @@ class Distributions:
 
             self.injection += signal
 
-    def generate_upsilon_statistic_height_plot(self,num_realisations=1000,num_segments=10):
+    def generate_upsilon_statistic_height_plot(self,num_realisations=1000,num_segments=10,ssn_filename='ssn.txt',sn_filename='sn.txt',sn=True):
         '''
         Generates the distribution of the search statistic for the semi-coherent search.
             Generates both <s|n> and <s|s+n>
@@ -183,6 +184,9 @@ class Distributions:
         Args:
             num_realisations (int, optional): Number of noise realisations to generate. Defaults to 1000.
             num_segments (int, optional): Number of segments to use for the semi-coherent approach. Defaults to 10.
+            ssn_filename (str, optional): Filename to save the <s|s+n> search statistic values. Defaults to 'ssn.txt'.
+            sn_filename (str, optional): Filename to save the <s|n> search statistic values. Defaults to 'sn.txt'.
+            sn (bool, optional): If True, generates the <s|n> search statistic. Defaults to True.
         '''
         if use_GPU==False:
             print('Computing Upsilons over the FFT grid on many noise realisations is expensive on CPU. Please be patient.')
@@ -191,48 +195,67 @@ class Distributions:
         s_n =  []
 
         for i in range(num_realisations):
+            
             # Generate noise realisation
             noise_ = self.generate_noise_realisation()
             data = self.injection + noise_
             
-            # Generate the upsilon statistic <s|s+n>
-            s_s_n.append(upsilon_func(self.injection,data,self.psd_array,self.df,num_segments=num_segments))
+            if num_segments!= 0:
+                # Semi-coherent
+                # Generate the upsilon statistic <s|s+n>
+                s_s_n.append(upsilon_func(self.injection,data,self.psd_array,self.df,num_segments=num_segments))
 
-            # Generate the upsilon statistic <s|n>
-            s_n.append(upsilon_func(self.injection,noise_,self.psd_array,self.df,num_segments=num_segments))
+                if sn == True:
+                    # Generate the upsilon statistic <s|n>
+                    s_n.append(upsilon_func(self.injection,noise_,self.psd_array,self.df,num_segments=num_segments))
+
+            else:
+                # Coherent
+                s_s_n.append(noise_weighted_inner_product(self.injection,data,self.df,self.psd_array,phase_maximize=False)/
+                                1/np.sqrt(noise_weighted_inner_product(self.injection,self.injection,self.df,self.psd_array,phase_maximize=False)))
+                if sn == True:
+                    s_n.append(noise_weighted_inner_product(self.injection,noise_,self.df,self.psd_array,phase_maximize=False)/
+                                    1/np.sqrt(noise_weighted_inner_product(self.injection,self.injection,self.df,self.psd_array,phase_maximize=False)))
+
+
+        # Save the search statistic values to a file
+        numpy.savetxt(ssn_filename,s_s_n)
+
+        if sn == True:
+            numpy.savetxt(sn_filename,s_n)
 
         # Compute theoretical distribution of the search statistic that should agree with this  (See arXiv:1705.04259v2)
         
-        x_range_s_s_n = np.linspace(np.min(s_s_n),np.max(s_s_n),1000)
+        # x_range_s_s_n = np.linspace(np.min(s_s_n),np.max(s_s_n),1000)
 
-        mu_1 = num_segments*self.mu_k+self.injection_SNR**2
-        sigma_1 = np.sqrt(2*num_segments*self.sigma_k**2+4*self.injection_SNR**2)
+        # mu_1 = num_segments*self.mu_k+self.injection_SNR**2
+        # sigma_1 = np.sqrt(2*num_segments*self.sigma_k**2+4*self.injection_SNR**2)
 
-        theoretical_s_s_n= scipy.stats.norm.pdf(x_range_s_s_n,loc = mu_1,scale = sigma_1)
+        # theoretical_s_s_n= scipy.stats.norm.pdf(x_range_s_s_n,loc = mu_1,scale = sigma_1)
 
 
-        x_range_s_n = np.linspace(np.min(s_n),np.max(s_n),1000)
+        # x_range_s_n = np.linspace(np.min(s_n),np.max(s_n),1000)
 
-        mu_0 = num_segments*self.mu_k
-        sigma_0 = np.sqrt(2*num_segments*self.sigma_k**2)
+        # mu_0 = num_segments*self.mu_k
+        # sigma_0 = np.sqrt(2*num_segments*self.sigma_k**2)
         
-        theoretical_s_n= scipy.stats.norm.pdf(x_range_s_n,loc = mu_0,scale = sigma_0)
+        # theoretical_s_n= scipy.stats.norm.pdf(x_range_s_n,loc = mu_0,scale = sigma_0)
 
 
-        # Plot the distribution of the search statistic
-        plt.figure(figsize=(12,7))
+        # # Plot the distribution of the search statistic
+        # plt.figure(figsize=(12,7))
         
-        #  <signal| signal + noise>
-        plt.hist(s_s_n,density=True,histtype='step',color='r',label=r'$\Upsilon(s,s+n)$ N='+str(num_segments),bins=50)
-        plt.plot(x_range_s_s_n,theoretical_s_s_n,linestyle='--',label=r'$\mathcal{N}(N\mu_k+\rho^2,2N\sigma_k^2+4\rho^2)$',lw=2,color='r')
+        # #  <signal| signal + noise>
+        # plt.hist(s_s_n,density=True,histtype='step',color='r',label=r'$\Upsilon(s,s+n)$ N='+str(num_segments),bins=50)
+        # plt.plot(x_range_s_s_n,theoretical_s_s_n,linestyle='--',label=r'$\mathcal{N}(N\mu_k+\rho^2,2N\sigma_k^2+4\rho^2)$',lw=2,color='r')
         
-        # <signal| noise>
-        plt.hist(s_n,density=True,histtype='step',color='g',label=r'$\Upsilon(s|n)$ N='+str(num_segments),bins=50)
-        plt.plot(x_range_s_n,theoretical_s_n,linestyle='--',label=r'$\mathcal{N}(N \mu_k,2N\sigma^2_k)$',lw=2,color='g')    
+        # # <signal| noise>
+        # plt.hist(s_n,density=True,histtype='step',color='g',label=r'$\Upsilon(s|n)$ N='+str(num_segments),bins=50)
+        # plt.plot(x_range_s_n,theoretical_s_n,linestyle='--',label=r'$\mathcal{N}(N \mu_k,2N\sigma^2_k)$',lw=2,color='g')    
     
-        plt.xlabel(r'$\Upsilon$')
-        plt.yticks([])
-        plt.legend(loc='upper left')
-        plt.show()
+        # plt.xlabel(r'$\Upsilon$')
+        # plt.yticks([])
+        # plt.legend(loc='upper left')
+        # plt.show()
 
 
