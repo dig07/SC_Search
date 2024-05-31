@@ -1,7 +1,15 @@
-import numpy as np 
+try: 
+    import cupy as np
+    import numpy as numpy
+
+except Exception as e:
+    print('Cupy not installed')
+    import numpy as np
+    import numpy as numpy
+
+
 import matplotlib.pyplot as plt 
 
-import numpy as np 
 import copy 
 
 from  .Waveforms import Constants as const
