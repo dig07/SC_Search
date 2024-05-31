@@ -1,18 +1,4 @@
-try: 
-    import cupy as np
-    import numpy as numpy
-    use_GPU = True
-except ImportError:
-    print('Cupy not installed')
-    import numpy as np
-    import numpy as numpy 
-    use_GPU = False
-
-import scipy
-
 import matplotlib.pyplot as plt
-import matplotlib
-
 
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import upsilon_func
@@ -20,6 +6,15 @@ from .Semi_Coherent_Functions import noise_weighted_inner_product
 from .Noise import *
 from .Waveforms import TaylorF2Ecc
 
+try: 
+    import cupy as np
+    import numpy as numpy
+    use_GPU = True
+except Exception as e:
+    print('Cupy not installed')
+    import numpy as np
+    import numpy as numpy
+    use_GPU = False
 
 class Distributions:
     '''
@@ -130,19 +125,12 @@ class Distributions:
 
         - Harcoded to Michelson PSD for now 
         '''
-        # Generate the PSD
-        if use_GPU == False: 
-            Sdisp = Sdisp_SciRD(self.freqs)
-            Sopt = Sopt_SciRD(self.freqs)
-            self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
-            self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
-            self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
-        else:
-            Sdisp = Sdisp_SciRD(self.freqs_on_CPU)
-            Sopt = Sopt_SciRD(self.freqs_on_CPU)
-            self.psd_A = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
-            self.psd_E = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
-            self.psd_T = psd_TX(self.freqs_on_CPU,Sdisp,Sopt)
+
+        Sdisp = Sdisp_SciRD(self.freqs)
+        Sopt = Sopt_SciRD(self.freqs)
+        self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
+        self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
+        self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
         self.psd_array = np.array([self.psd_A,self.psd_E,self.psd_T]) ## Agnostic to CPU or GPU
     
@@ -215,12 +203,14 @@ class Distributions:
                     s_n.append(noise_weighted_inner_product(self.injection,noise_,self.df,self.psd_array,phase_maximize=False)/
                                     1/np.sqrt(noise_weighted_inner_product(self.injection,self.injection,self.df,self.psd_array,phase_maximize=False)))
 
+        s_s_n = np.array(s_s_n)
 
         # Save the search statistic values to a file
-        numpy.savetxt(ssn_filename,s_s_n)
+        np.savetxt(ssn_filename,s_s_n)
 
         if sn == True:
-            numpy.savetxt(sn_filename,s_n)
+            s_n = np.array(s_n)
+            np.savetxt(sn_filename,s_n)
 
         # Compute theoretical distribution of the search statistic that should agree with this  (See arXiv:1705.04259v2)
         

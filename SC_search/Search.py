@@ -172,13 +172,13 @@ class Search:
         - Harcoded to Michelson PSD for now 
         '''
         # Generate the PSD
-        Sdisp = Sdisp_SciRD(self.freqs_on_CPU)
-        Sopt = Sopt_SciRD(self.freqs_on_CPU)
-        self.psd_A = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
-        self.psd_E = psd_AEX(self.freqs_on_CPU,Sdisp,Sopt)
-        self.psd_T = psd_TX(self.freqs_on_CPU,Sdisp,Sopt)
+        Sdisp = Sdisp_SciRD(self.freqs)
+        Sopt = Sopt_SciRD(self.freqs)
+        self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
+        self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
+        self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
-        self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
+        self.psd_array = np.array([self.psd_A,self.psd_E,self.psd_T]) ## Agnostic to CPU or GPU
     
     def generate_injection_data(self,include_noise=True):
         '''
