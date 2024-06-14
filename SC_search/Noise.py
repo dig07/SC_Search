@@ -105,34 +105,46 @@ def XYZ2AET(X, Y, Z):
     return A, E, T
 
 
-def noise_realization(psd, T, df=None, fs=None, FD=True):
+def noise_realization(psd, T):
     """
     Generates a random, Gaussian noise realization from a known PSD. 
 
     Args:
         psd (array of floats): Noise PSD
         T (float): Observation time [s] ( = 1 / frequency spacing )
-        df (float, optional): Sampling frequency [Hz] ( = 1 / LISA sampling cadence )
+        df (float): Sampling frequency [Hz] ( = 1 / LISA sampling cadence )
             This is only needed if FD=False.
-        fs (array of floats, optional): Frequencies that the PSD is computed over.
-            This is only needed if FD=False to check the requirement that fs[0]==0.
-        FD (bool, optional): If True, return output in the frequency domain.
-            If False, take the inverse Fourier transform and return in the time domain.
-            Requires fs[0]==0.
 
     Returns:
         array of floats: Noise realization for the given PSD
     """
-    amp = np.random.normal(loc=0, scale=np.sqrt(T*psd/2.))
-    phase = 2.*np.pi*np.random.random(size=len(psd))
-    Sn = amp*np.exp(1j*phase)
-    if FD: 
-        return Sn
-    else: 
-        assert df!=None, "when generating time domain noise user must \
-                          specify df sampling frequency"
-        assert fs[0] == 0, "the frequency needs to start at zero for \
-                            FD=False"
+    # Generate a white noise realization in the frequency domain
+    wgn_realization = white_noise_realization(T,psd.size)
+    # Scale using PSD
+    cgn_realization = psd**0.5 * wgn_realization
+    return cgn_realization
+    
+    
+def white_noise_realization(T, fs=None):
+    """
+    Generate a white noise realization.
 
-        dt = 1. / df
-        return np.fft.irfft(Sn)/dt
+    Args:
+        T (float): The duration of the white noise realization.
+        fs (float, optional): The size of the frequency array to associate with the realization. Default is None.
+
+    Returns:
+        white_noise (ndarray): The generated white noise realization.
+
+    """
+    norm1 = 0.5 * T**0.5
+    re1, im1 = np.random.normal(loc=0, scale= norm1, size=(2, fs))
+    white_noise = re1 + 1j * im1
+    # set DC and Nyquist = 0
+    white_noise[0] = 0
+    # no Nyquist frequency when N=odd
+    if np.mod(fs, 2) == 0:
+        white_noise[-1] = 0
+    # python: transpose for use with infft
+    white_noise = np.transpose(white_noise)
+    return white_noise

@@ -111,9 +111,9 @@ class Distributions:
             noise_: Noise realization (3,#FFTgrid)
         '''
         # Generate noise in each channel
-        noise_A = noise_realization(self.psd_A,self.T_obs,self.df,FD=True)
-        noise_E = noise_realization(self.psd_E,self.T_obs,self.df,FD=True)
-        noise_T = noise_realization(self.psd_T,self.T_obs,self.df,FD=True)
+        noise_A = noise_realization(self.psd_A,self.T_obs)
+        noise_E = noise_realization(self.psd_E,self.T_obs)
+        noise_T = noise_realization(self.psd_T,self.T_obs)
 
         noise_ = np.array([noise_A,noise_E,noise_T]) # Agnostic to CPU or GPU
 
