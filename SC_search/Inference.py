@@ -1,8 +1,9 @@
 try: 
     import cupy as cp 
 except ImportError:
-    print('Cupy not installed, Inference (on full FFT grid) wont work')
-import numpy as np 
+    print('Cupy not installed, Inference wont work')
+import numpy as np
+import numpy as numpy 
 
 import matplotlib.pyplot as plt
 
@@ -155,8 +156,6 @@ class dynesty_inference():
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
-        # self.psd_array = np.array([self.psd_A,self.psd_E,self.psd_T]) ## Agnostic to CPU or GPU
-
         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
 
     def generate_injection_data(self,include_noise=True):
@@ -282,22 +281,22 @@ class dynesty_inference():
         '''
         # Extract sampling results.
         samples = results.samples  # samples
-        weights = np.exp(results.logwt - results.logz[-1])  # normalized weights
+        weights = numpy.exp(results.logwt - results.logz[-1])  # normalized weights
 
 
         # Resample weighted samples.
         samples_equal = dyfunc.resample_equal(samples, weights)
 
         # Save samples
-        np.savetxt('samples.txt',samples_equal)
+        numpy.savetxt('samples.txt',samples_equal)
 
         logls = []
         for sample in samples_equal:
             logls.append(self.likelihood(sample.copy()))
         
         # Save log likelihoods
-        np.savetxt('logls.txt',logls)
+        numpy.savetxt('logls.txt',logls)
         
-        print('Maximum log likelihood: ',np.max(logls))
+        print('Maximum log likelihood: ',numpy.max(logls))
 
         return(samples_equal)
