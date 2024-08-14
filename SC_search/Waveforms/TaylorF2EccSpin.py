@@ -53,16 +53,19 @@ Armlength = 2.5e+9/c
 bbhx_pre_factor = 1/(2j*np.pi*Armlength)
 
 @jit(nopython=True)
-def calculate_T(v, v0, e0, eta, beta):
+def calculate_T(v, v0, e0, eta, beta_15,beta_25,sigma):
     '''
     Calculates the value of T using the (TaylorT2) Equation 6.7b from arXiv:1605.00304v2.
+    Uses Phase from arXiv:2108.05861 and SPA to calculate t-f correction from upto 2.5PN spin effects. 
 
     Parameters:
       v (float or array of floats): (pi*M*f)^{1/3} with f as frequencies of the binary system.
       v0 (float): (pi*M*f_0)^{1/3}, with f_0 as the initial GW frequency of the binary
       e0 (float): The initial eccentricity of the binary system.
       eta (float): The symmetric mass ratio of the binary system.
-      beta (float): The 1.5 PN term.
+      beta_15 (float): The 1.5 PN Spin-orbit term.
+      beta_25 (float): The 2.5 PN Spin-orbit term.
+      sigma (float): The 2 PN spin-spin term.
 
     Returns:
       T (float or array of floats): The calculated value(s) of T at fs provided into v.
@@ -105,23 +108,26 @@ def calculate_T(v, v0, e0, eta, beta):
          (3090307 / 139968) * eta**3 + (87419 / 1890) * numpy.log(2) - (26001 / 560) * numpy.log(3) - \
          (3317 / 252) * numpy.log(16 * v0**2)) * v0**6)
 
-    spin_aligned_term = 8*v**3*beta/5
+    spin_aligned_terms = -2*v**4*sigma + 1/315*v**3*(504+5*v**2*(743+924*eta))*beta_15 - (8*v**5*beta_25)/3
 
-    T = term1+term2+term3+term4+spin_aligned_term
+    T = term1+term2+term3+term4+spin_aligned_terms
     return T
 
 
 @jit(nopython=True)
-def F2EccPhase(freqs,eta,v,e0,v0,coallesence_phase,time_to_merger,beta):
+def F2EccPhase(freqs,eta,v,e0,v0,coallesence_phase,time_to_merger,beta_15,beta_25,sigma):
     '''
     Calculates the value of Lambda_f using the (TaylorT2) Equation 6.26 from arXiv:1605.00304v2. Waveform Fourier phase for TaylorF2Ecc.
+    Uses Phase correction from arXiv:2108.05861 due to spin affects upto 2.5 PN.
 
     Parameters:
       v (float or array of floats): (pi*M*f)^{1/3} with f as frequencies of the binary system.
       v0 (float): (pi*M*f_0)^{1/3}, with f_0 as the initial GW frequency of the binary
       e0 (float): The initial eccentricity of the binary system.
       eta (float): The symmetric mass ratio of the binary system.
-      beta (float): The 1.5 PN term.
+      beta_15 (float): The 1.5 PN Spin-orbit term.
+      beta_25 (float): The 2.5 PN Spin-orbit term.
+      sigma (float): The 2 PN spin-spin term.
 
     Returns:
       psi (float or array of floats): The calculated value(s) of psi at fs provided into v.
@@ -168,19 +174,20 @@ def F2EccPhase(freqs,eta,v,e0,v0,coallesence_phase,time_to_merger,beta):
         87419 / 1890 * numpy.log(2) - 26001 / 560 * numpy.log(3) -
         3317 / 252 * numpy.log(16 * v0**2)) * v0**6)
     
-    spin_aligned_term = 4*beta*v**3
+    spin_aligned_terms = 4*beta_15*v**3 - 10*sigma*v**4 + v**5 * numpy.log(v**3)*(40/9*beta_25-beta_15*(3715/189+220/9*eta))
 
     psi_0 = -2*coallesence_phase + 2*numpy.pi*freqs*time_to_merger - numpy.pi/4
         
-    psi = psi_0 + term1 * (term2 + term3 + term4 + term5 + term6 + spin_aligned_term)
+    psi = psi_0 + term1 * (term2 + term3 + term4 + term5 + term6 + spin_aligned_terms)
     
     return(psi)
 
 @jit(nopython=True)
-def time_to_merger(m1,m2,inc,e0,f_0,beta):
+def time_to_merger(m1,m2,inc,e0,f_0,beta_15,beta_25,sigma):
 
     '''
     Calculates time to merger using TaylorT2 Eqn 6.6a from arXiv:1605.00304v2
+    Uses Phase correction from arXiv:2108.05861 due to spin affects upto 2.5 PN.
 
     Args:
         m1 (float): Mass of the first object in solar masses.
@@ -188,7 +195,9 @@ def time_to_merger(m1,m2,inc,e0,f_0,beta):
         inc (float): Inclination angle in radians.
         e0 (float): Initial eccentricity.
         f_0 (float): Initial GW frequency in Hz.
-        beta (float): The 1.5 PN term.
+        beta_15 (float): The 1.5 PN Spin-orbit term.
+        beta_25 (float): The 2.5 PN Spin-orbit term.
+        sigma (float): The 2 PN spin-spin term.
 
     Returns:
         float: Time to merger in seconds.
@@ -239,8 +248,27 @@ def waveform_construct(m1,m2,inc,e0,D,freqs,s1,s2,f_low,f_high,coallesence_phase
     M = m1+m2 
     eta = (m1*m2)/(M**2)# # Reduced mass ratio #m1m2/M**2
 
-    # Compute the 1.5 PN term from s1 and s2
-    beta = s1*(113/12*(m1**2)/(M**2)+25/4*eta) + s2*(113/12*(m2**2)/(M**2)+25/4*eta)
+    # Spin equations from arXiv:2108.05861v2
+
+    # Compute the 1.5 PN term from s1 and s2 (Spin-orbit)
+    beta_15 = s1*(113/12*(m1**2)/(M**2)+25/4*eta) + s2*(113/12*(m2**2)/(M**2)+25/4*eta)
+    
+    # Compute the 2.5 PN term from s1 and s2 (Spin-orbit)
+    beta_25 = s1*((m1**2)/(M**2)*(-31319/1008+1159/24*eta)+eta*(-809/84+281/8*eta))+s2*((m2**2)/(M**2)*(-31319/1008+1159/24*eta)+eta*(-809/84+281/8*eta))
+
+    # Compute the 2 PN term from s1 and s2 (Spin-spin) (sigma)
+
+    # Standard spin-spin term
+    simga_s1s2 = 474/48*eta*s1*s2
+
+    # Quadrupole - monopole term
+    sigma_qm = 5*(s1**2*(m1**2)/(M**2)+s2**2*(m2**2)/(M**2))
+
+    # Self-spin interaction term 
+    sigma_self_spin = 1/16*(s1**2*(m1**2)/(M**2)+s2**2*(m2**2)/(M**2)) 
+
+    # Add them all together to get the 2PN term
+    sigma = simga_s1s2 + sigma_qm + sigma_self_spin
 
     # Only compute the waveform for frequencies > the initial GW frequency
     freq_mask = freqs>=f_low
@@ -254,11 +282,11 @@ def waveform_construct(m1,m2,inc,e0,D,freqs,s1,s2,f_low,f_high,coallesence_phase
     v = (numpy.pi*M*masked_freqs)**(1/3)
 
     # Calculate tc (time to merger)
-    time_to_merger = 5/256* M/eta * 1/(v0)**8*calculate_T(v0, v0, e0, eta, beta)
+    time_to_merger = 5/256* M/eta * 1/(v0)**8*calculate_T(v0, v0, e0, eta, beta_15,beta_25,sigma)
 
     if logging==True:
         # Time to merger from the time the source exits the frequency band specified, no eccentricity evolution assumed
-        time_to_merger_from_f_high = 5/256* M/eta * 1/(v1)**8*calculate_T(v1, v1, e0, eta, beta)    
+        time_to_merger_from_f_high = 5/256* M/eta * 1/(v1)**8*calculate_T(v1, v1, e0, eta, beta_15,beta_25,sigma)    
         print('Time to merger is: ',(time_to_merger)/(const.YRSID_SI),' years')
         print('Upper bound on time in band: ',(time_to_merger-time_to_merger_from_f_high)/(const.YRSID_SI),' years (no eccentricity evolution assumed)')
 
@@ -266,10 +294,10 @@ def waveform_construct(m1,m2,inc,e0,D,freqs,s1,s2,f_low,f_high,coallesence_phase
     Amp = M*numpy.sqrt(5*numpy.pi/96)*(M/D)*numpy.sqrt(eta)*(numpy.pi*(M)*masked_freqs)**(-7/6)
 
     # Waveform phase 
-    Phi = F2EccPhase(masked_freqs,eta,v,e0,v0,coallesence_phase,time_to_merger,beta)
+    Phi = F2EccPhase(masked_freqs,eta,v,e0,v0,coallesence_phase,time_to_merger,beta_15,beta_25,sigma)
 
     # Calculate t-f map using 6.7a from arXiv:1605.00304v2
-    time_to_merger_minus_time = 5/256* M/eta * 1/(v)**8*calculate_T(v, v0, e0, eta,beta)
+    time_to_merger_minus_time = 5/256* M/eta * 1/(v)**8*calculate_T(v, v0, e0, eta,beta_15,beta_25,sigma)
 
     #t-f map
     times = time_to_merger - time_to_merger_minus_time
