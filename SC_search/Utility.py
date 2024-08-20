@@ -283,7 +283,7 @@ def corner_mine(posteriors,
                 if renormalize == True:
                     ax_diag[i].hist(data[:, i], bins=special_1d_hist_param_bins[posterior_index], color=colors[posterior_index], histtype='step',weights=weights,linewidth=line_width)
                 else:
-                    ax_diag[i].hist(data[:, i], bins=special_1d_hist_param_bins[posterior_index], color=colors[posterior_index], histtype='step',linewidth=line_width)
+                    ax_diag[i].hist(data[:, i], bins=special_1d_hist_param_bins[posterior_index], color=colors[posterior_index], histtype='step',linewidth=line_width,density=True)
 
             else:
                 
@@ -292,7 +292,7 @@ def corner_mine(posteriors,
                 if renormalize == True:
                     ax_diag[i].hist(data[:, i], bins=num_1d_hist[posterior_index], color=colors[posterior_index], histtype='step',weights=weights,linewidth=line_width)
                 else:
-                    ax_diag[i].hist(data[:, i], bins=num_1d_hist[posterior_index], color=colors[posterior_index], histtype='step',linewidth=line_width)
+                    ax_diag[i].hist(data[:, i], bins=num_1d_hist[posterior_index], color=colors[posterior_index], histtype='step',linewidth=line_width,density=True)
 
                 
             ax_diag[i].set_yticks([])
