@@ -1,4 +1,6 @@
 # SC_Search
+Experimental branch for me to try stuff in
+
 
 Python library for semi-coherent searches of stellar mass binary signals in LISA. 
 ![Tracks](https://github.com/dig07/SC_Search/assets/23508858/c4dd3efb-16b5-46f6-b3cf-6e672ceacd5c)
