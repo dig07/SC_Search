@@ -9,7 +9,7 @@ Python library for semi-coherent searches of stellar mass binary signals in LISA
 <hr>
 Install order (using a conda environment): 
 <ul>
-  <li>BBHx, used for response and interpolation (https://github.com/mikekatz04/BBHx, following the install instructions there)./</li>
-  <li>Optionally install Balrog if you have access to it, only used to verify the responses are consistent between the BBHx and Balrog codes, not used in the actual search. </li>
+  <li>BBHx, used for response and interpolation (https://github.com/mikekatz04/BBHx, following the install instructions there).</li>
+  <li>Optionally install Balrog if you have access to it, only used to verify the responses are consistent between the BBHx and Balrog codes, not used in the actual search.</li>
   <li>SC_Search (This package)</li>
 </ul>
