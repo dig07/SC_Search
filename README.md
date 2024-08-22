@@ -7,7 +7,7 @@ Python library for semi-coherent searches of stellar mass binary signals in LISA
 <b>Please note this library is still in a very hacky state and under development! A lot of the functionality such as the waveform model choices right now is hardcoded, however the bits of the code relevant to the semi-coherent method should be relatively easy to read and re-implement from the file: https://github.com/dig07/SC_Search/blob/main/SC_search/Semi_Coherent_Functions.py.</b>
 
 <hr>
-If you want to install this library in addition to the following packages, you also need an environment with a working installation of <a href="https://cupy.dev/">cupy</a> which allows you to run the search (since it needs GPUs). <br><br>
+If you want to install this library in addition to the following packages, you also need an environment with a working installation of <a href="https://cupy.dev/">cupy</a> which allows you to run the search (since it needs GPUs). If you run into any problems, please contact me! <br><br>
 Install order (using a conda environment): 
 <ul>
   <li><a href="https://github.com/mikekatz04/BBHx">BBHx</a>, used for response and interpolation (following the install instructions there).</li>
