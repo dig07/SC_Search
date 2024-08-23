@@ -14,4 +14,6 @@ Install order (using a conda environment):
   <li>Optionally install Balrog if you have access to it, only used to <a href="https://github.com/dig07/SC_Search/blob/main/Verification/Verification_Balrog.ipynb">verify the responses are consistent between the BBHx and Balrog codes</a>, not used in the actual search.</li>
   <li>SC_Search (This package)</li>
   <li><a href="https://github.com/dig07/PySO/tree/main/PySO">PySO</a> (Particle swarm optimisation library)</li>
+  <li><a href="https://github.com/minaskar/zeus">Zeus</a> (MCMC library used for post search parameter estimation)</li>
+  <li><a href="https://github.com/joshspeagle/dynesty">Dynesty</a> (Nested sampling library used to perform direct sampling)</li>
 </ul>
