@@ -119,7 +119,7 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
         df (float): Frequency step size (1/Tobs).
         num_segments (int, optional): The number of segments to split the signal into. Defaults to 1.
     Returns:
-        float: The semi-coherent log likelihood
+        float: The semi-coherent quantity upsilon evaluated with given num_segments
     """
     segment_indices = equal_SNR_segmentation(signal,psd_array,num_segments)
 
@@ -225,6 +225,8 @@ def upsilon_func_masking(signal,data,psd_array,df,num_segments=1):
     Note: This function becomes faster than the for loop implementation when the number of segments is large.
         At low number of segments this is actually slower than the for loop implementation: upislon_func.
 
+    Warning: Very memory expensive at times.
+
     Args:
         signal (array-like): The signal model. Shape: (3,#FFTgrid).
         data (array-like): The data. Shape: (3,#FFTgrid).
@@ -232,7 +234,7 @@ def upsilon_func_masking(signal,data,psd_array,df,num_segments=1):
         df (float): Frequency step size (1/Tobs).
         num_segments (int, optional): The number of segments to split the signal into. Defaults to 1.
     Returns:
-        float: The semi-coherent log likelihood
+        float: The semi-coherent quantity upsilon evaluated with given num_segments
     """
     segment_indices = equal_SNR_segmentation(signal,psd_array,num_segments)
 
