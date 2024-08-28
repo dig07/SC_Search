@@ -141,7 +141,7 @@ class Search:
         
         # If frequencies are already generated and stored in a file, load them in
         if 'pregenerated_frequencies' in self.frequency_series_dict:
-            if self.frequency_series_dict['frequency_series_dict'] == True:
+            if self.frequency_series_dict['pregenerated_frequencies'] == True:
                 self.freqs = cp.asarray(np.load('freqs.npy'))
                 self.df = cp.diff(self.freqs)[1]
 
