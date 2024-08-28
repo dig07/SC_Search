@@ -137,9 +137,13 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
         psd_segment = psd_split[segment_index]
         data_segment = data_split[segment_index]
 
-        #h_inner_d/sqrt(h_inner_h)
-        upsilon += (noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(
-                        noise_weighted_inner_product(signal_segment,signal_segment,df,psd_segment,phase_maximize=True))))**2
+        h_inner_h = noise_weighted_inner_product(signal_segment,signal_segment,df,psd_segment,phase_maximize=True)
+
+        if h_inner_h == 0.0: # i.e no signal in this segment 
+            continue
+        else: 
+            #h_inner_d/sqrt(h_inner_h)
+            upsilon += (noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(h_inner_h)))**2
 
     return(upsilon.item())
 
