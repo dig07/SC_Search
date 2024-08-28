@@ -126,6 +126,8 @@ class Search:
     def generate_frequency_grids(self,):
         '''
         Generates the dense and sparse frequency grids for search. 
+        If provided data file and frequency series is pregenerated, load in the frequencies.
+
         Stores both on CPU and GPU.         
         '''
 
@@ -136,11 +138,20 @@ class Search:
 
         # Downsampling factor is used for the sparse frequency grid for interpolation
         self.downsampling_factor = self.frequency_series_dict['downsampling_factor']
+        
+        # If frequencies are already generated and stored in a file, load them in
+        if 'pregenerated_frequencies' in self.frequency_series_dict:
+            if self.frequency_series_dict['frequency_series_dict'] == True:
+                self.freqs = cp.asarray(np.load('freqs.npy'))
+                self.df = cp.diff(self.freqs)[1]
 
-        # Generating frequency grid (dense)
-        self.df = 1/self.T_obs
-
-        self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
+            else:
+                self.df = 1/self.T_obs
+                self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
+        else:
+                self.df = 1/self.T_obs
+                self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
+ 
         self.freqs_on_CPU = self.freqs.get() # On CPU
 
         self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU

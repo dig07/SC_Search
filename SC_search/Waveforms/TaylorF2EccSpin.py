@@ -210,7 +210,7 @@ def time_to_merger(m1,m2,inc,e0,f_0,beta_15,beta_25,sigma):
     
     v_init = (numpy.pi*M*f_0)**(1/3)
     
-    tm = (5/256* M/eta * 1/(v_init)**8*calculate_T(v_init, v_init, e0,eta,beta))
+    tm = (5/256* M/eta * 1/(v_init)**8*calculate_T(v1, v1, e0, eta, beta_15,beta_25,sigma))
     
     return(tm)
 
