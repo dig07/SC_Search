@@ -143,9 +143,9 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
             continue
         else: 
             #h_inner_d/sqrt(h_inner_h)
-            upsilon += (noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(h_inner_h)))**2
+            upsilon += ((noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(h_inner_h)))**2).item()
 
-    return(upsilon.item())
+    return(upsilon)
 
 def semi_coherent_match(signal,data,psd_array,df,num_segments=1):
     """
