@@ -143,7 +143,7 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
             upsilon += 0.0
         else: 
             #h_inner_d/sqrt(h_inner_h)
-            upsilon += ((noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(h_inner_h)))**2)
+            upsilon += (noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(h_inner_h)))**2
 
     return(upsilon.item())
 
