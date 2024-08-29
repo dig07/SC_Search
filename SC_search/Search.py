@@ -114,7 +114,7 @@ class Search:
                     self.data = self.data[:,self.frequency_mask].copy()
 
                     # Save filtered version of frequencies 
-                    self.cupy_to_numpy_save(self.data,'freqs_filtered.npy')
+                    self.cupy_to_numpy_save(self.data,'data_filtered.npy')
         elif noise_only_injection == True and load_data_file == False:
             # Generate data containing only noise
             self.data = self.generate_noise_realisation()
