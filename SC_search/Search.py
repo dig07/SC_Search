@@ -107,6 +107,11 @@ class Search:
         if load_data_file == True:
             # Load in data
             self.data = cp.asarray(np.load(data_file_name))
+            # If dynamically computing the upper frequency
+            if 'compute_f_max_for_tile' in self.frequency_series_dict:
+                if self.frequency_series_dict['compute_f_max_for_tile'] == True:
+                    # Frequency mask to cut off the frequency grid at the maximum frequency for integration
+                    self.data = self.data[self.frequency_mask].copy()
         elif noise_only_injection == True and load_data_file == False:
             # Generate data containing only noise
             self.data = self.generate_noise_realisation()
@@ -151,7 +156,34 @@ class Search:
         else:
                 self.df = 1/self.T_obs
                 self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
- 
+
+        # Option to compute the maximum frequency for integration based on the search tile. 
+        if 'compute_f_max_for_tile' in self.frequency_series_dict:
+            if self.frequency_series_dict['compute_f_max_for_tile'] == True:
+
+                mc_prior = self.prior_bounds[0]
+                eta_prior = self.prior_bounds[1]
+                f0_prior = np.array(self.prior_bounds[6])*2 # factor of 2 as we need GW
+                e0_prior = self.prior_bounds[7]
+
+                search_tile_prior = np.array([mc_prior,
+                                              eta_prior,
+                                              f0_prior,
+                                              e0_prior])
+                # Maximum frequency of integration for whole search 
+                self.fmax = TaylorF2Ecc.compute_f_max_for_tile(search_tile_prior,
+                                                   self.T_obs,
+                                                   f_psd_high=0.1, 
+                                                   safety_factor=1.1)
+                print('f_max for search for this tile:',self.f_max)
+
+                # Frequency mask to cut off the frequency grid at the maximum frequency for integration
+                # Used below and when importing data. 
+                self.frequency_mask = self.freqs<=self.fmax
+
+                self.freqs = self.freqs[self.frequency_mask] # On GPU
+
+        # If not just use the whole frequency grid
         self.freqs_on_CPU = self.freqs.get() # On CPU
 
         self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU

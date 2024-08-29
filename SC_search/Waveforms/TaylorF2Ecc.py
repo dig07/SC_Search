@@ -28,7 +28,7 @@ from numba import jit
 
 # LISA imports (Balrog)
 from . import Constants as const
-
+from .. import Utility as Utility
 
 # LISA imports (BBHx)
 from bbhx.response.fastfdresponse import LISATDIResponse
@@ -963,4 +963,74 @@ def find_f_low_and_run_balrog_response(params,freqs,f_high,T_obs,engine,TDIType,
 
     return(signal)
 
-### TODO: TIME IN BAND: NEED ECCENTRICITY EVOLUTION AS A FUNCTION OF FREQUENCY
+def f_high_tile_compute(search_priors,t_obs,f_psd_high=0.1, safety_factor=1.1):
+    '''
+    Compute the maximum frequency to which we should integrate to in the search. 
+
+    Case 1: The 'fastest' merger in the tile has time to merger >T_obs, in which case we can be guranteed that we only need to calculate
+    f_high as f_gw for the 'fastest' merger at T_obs. 
+
+    Case 2: The 'slowest' merger in the tile merges with time to merger <T_obs. In this case we are forced to use the upper limit of the PSD.
+    All sources in this tile will merge.
+    We default this to f_psd_high = 0.1
+
+    Case 2 will be generally expensive because we have to go from f_low of the prior all the way to f_high set by the PSD, however I think 
+    these will only be for the templates that are chirping fast (which are likely to be on the top end of the frequency spectrum anyway). 
+    
+    NOTE: This f_high is *not* the same as the upper prior on f_low, this is the maximum frequency we should integrate the inner products 
+        to in the search. The upper prior on f_low is the maximum GW frequency in a given search tile. 
+
+    Args:
+        search_priors (array): Array of search priors for the tile.
+            [[mc_low,mc_high],[eta_low,eta_high],[f_low_GW_low,f_low_GW_high],[e0_low,e0_high]].
+        t_obs (float): Observation time.
+        f_psd_high (float, optional): Upper frequency limit set by the PSD. Defaults to 0.1.
+        safety_factor (float, optional): Safety factor to ensure we leave some extra frequency space on the 
+            top for eg if theres spin contributions. Defaults to 1.1.
+    
+    Returns:
+        f_high (float): Maximum frequency to integrate to in the search.
+    '''
+    # Extract priors
+    mc_prior = search_priors[0,:]
+    eta_prior = search_priors[1,:]
+    f_low_GW_prior = search_priors[2,:]
+    e0_prior = search_priors[3,:]
+
+    # Fastest chirp uses highest chirp mass and highest eta (most symmetric)
+    m1_fastest,m2_fastest = Utility.component_masses_from_chirp_eta(mc_prior[1],eta_prior[1])
+
+    # Slowest chirp uses lowest chirp mass and lowest eta (least symmetric)
+    m1_slowest,m2_slowest = Utility.component_masses_from_chirp_eta(mc_prior[0],eta_prior[0])
+
+    
+    # Compute fastest and slowest mergers: 
+    tc_fastest = time_to_merger(m1_fastest,m2_fastest,
+                                               3,#irrelevant
+                                               e0_prior[1],
+                                               f_low_GW_prior[1]) # Counting from upper end of f_low prior 
+
+    tc_slowest = time_to_merger(m1_slowest,m2_slowest,
+                                           3,#irrelevant
+                                           e0_prior[0],
+                                           f_low_GW_prior[0]) # Counting from lower end of f_low prior
+
+    if t_obs<tc_fastest:
+        print('Definitely not merging within the observation window, computing f_high for integration..')
+        
+        # tc_fastest - tc_from_f_high = t_obs, root find this to find f_high
+        root_finding_function = lambda f_high: (-time_to_merger(m1_fastest,m2_fastest,
+                                               3,#irrelevant
+                                               e0_prior[1],
+                                               f_high) + tc_fastest - t_obs)        
+        # bracketed by f_low and 0.1
+        f_high_rootfinder = scipy.optimize.root_scalar(root_finding_function,bracket=[f_low_GW_prior[0],f_psd_high],
+                                                       x0=f_low_GW_prior[0],xtol = 1.0055108727742241e-15)
+        # xtol is the difference in frequency between 1/year and 1/(year+1 second)
+        f_high = f_high_rootfinder.root*safety_factor # Safety factor to ensure we leave some extra frequency space on the top for eg if theres spin contributions
+        
+    elif t_obs>tc_slowest: 
+        print('Definitely merging within window f_high set to:',f_psd_high)
+        f_high = f_psd_high
+        
+    return(f_high)
