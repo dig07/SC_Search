@@ -113,6 +113,8 @@ class Search:
                     # Frequency mask to cut off the frequency grid at the maximum frequency for integration
                     self.data = self.data[:,self.frequency_mask].copy()
 
+                    # Save filtered version of frequencies 
+                    self.cupy_to_numpy_save(self.data,'freqs_filtered.npy')
         elif noise_only_injection == True and load_data_file == False:
             # Generate data containing only noise
             self.data = self.generate_noise_realisation()
@@ -183,6 +185,9 @@ class Search:
                 self.frequency_mask = self.freqs<=self.fmax
 
                 self.freqs = self.freqs[self.frequency_mask].copy() # On GPU
+
+                # Save filtered version of frequencies 
+                self.cupy_to_numpy_save(self.freqs,'freqs_filtered.npy')
 
         # If not just use the whole frequency grid
         self.freqs_on_CPU = self.freqs.get() # On CPU
