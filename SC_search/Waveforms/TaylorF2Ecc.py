@@ -970,9 +970,9 @@ def f_high_tile_compute(search_priors,t_obs,f_psd_high=0.1, safety_factor=1.1):
     Case 1: The 'fastest' merger in the tile has time to merger >T_obs, in which case we can be guranteed that we only need to calculate
     f_high as f_gw for the 'fastest' merger at T_obs. 
 
-    Case 2: The 'slowest' merger in the tile merges with time to merger <T_obs. In this case we are forced to use the upper limit of the PSD.
+    Case 2: The 'slowest' merger in the tile merges with time to merger <T_obs. In this case we are forced to use the upper limit of the frequency grid
+    provided by the user, this should really be ~0.1 for these sources.
     All sources in this tile will merge.
-    We default this to f_psd_high = 0.1
 
     Case 2 will be generally expensive because we have to go from f_low of the prior all the way to f_high set by the PSD, however I think 
     these will only be for the templates that are chirping fast (which are likely to be on the top end of the frequency spectrum anyway). 

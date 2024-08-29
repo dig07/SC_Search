@@ -111,7 +111,8 @@ class Search:
             if 'compute_f_max_for_tile' in self.frequency_series_dict:
                 if self.frequency_series_dict['compute_f_max_for_tile'] == True:
                     # Frequency mask to cut off the frequency grid at the maximum frequency for integration
-                    self.data = self.data[self.frequency_mask].copy()
+                    self.data = self.data[:,self.frequency_mask].copy()
+
         elif noise_only_injection == True and load_data_file == False:
             # Generate data containing only noise
             self.data = self.generate_noise_realisation()
@@ -171,17 +172,17 @@ class Search:
                                               f0_prior,
                                               e0_prior])
                 # Maximum frequency of integration for whole search 
-                self.fmax = TaylorF2Ecc.compute_f_max_for_tile(search_tile_prior,
+                self.fmax = TaylorF2Ecc.f_high_tile_compute(search_tile_prior,
                                                    self.T_obs,
-                                                   f_psd_high=0.1, 
+                                                   f_psd_high=self.fmax, # set default value for f_high in case we are merging within observation time to be whatever the user sets
                                                    safety_factor=1.1)
-                print('f_max for search for this tile:',self.f_max)
+                print('f_max for search for this tile:',self.fmax)
 
                 # Frequency mask to cut off the frequency grid at the maximum frequency for integration
                 # Used below and when importing data. 
                 self.frequency_mask = self.freqs<=self.fmax
 
-                self.freqs = self.freqs[self.frequency_mask] # On GPU
+                self.freqs = self.freqs[self.frequency_mask].copy() # On GPU
 
         # If not just use the whole frequency grid
         self.freqs_on_CPU = self.freqs.get() # On CPU
