@@ -1032,5 +1032,10 @@ def f_high_tile_compute(search_priors,t_obs,f_psd_high=0.1, safety_factor=1.1):
     elif t_obs>tc_slowest: 
         print('Definitely merging within window f_high set to:',f_psd_high)
         f_high = f_psd_high
-        
+    else: 
+        print('Prior window for time to merger is too broad,fastest merger is :'+str(tc_fastest/(365.25*24*60*60))+
+              ' slowest merger is: '+str(tc_slowest/(365.25*24*60*60))+' and observation time '+str(t_obs/(365.25*24*60*60)))
+        f_high = f_psd_high 
+        print('Setting upper frequency for integration to the max from frequency dictionary')
+
     return(f_high)
