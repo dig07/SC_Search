@@ -129,7 +129,7 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
 
     data_split = [data[:,segment_indices[i]:segment_indices[i+1]] for i in range(len(segment_indices)-1)]    
 
-    upsilon = np.abs(0.,dtype=float) 
+    upsilon = 0 
 
     for segment_index in range(num_segments):
 
@@ -139,11 +139,11 @@ def upsilon_func(signal,data,psd_array,df,num_segments=1):
 
         h_inner_h = noise_weighted_inner_product(signal_segment,signal_segment,df,psd_segment,phase_maximize=True)
 
-        if h_inner_h == 0.0: # i.e no signal in this segment 
-            pass
-        else: 
-            #(h_inner_d/sqrt(h_inner_h))**2
-            upsilon += (noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(h_inner_h)))**2
+        # if h_inner_h == 0.0: # i.e no signal in this segment 
+        #     pass
+        # else: 
+        #(h_inner_d/sqrt(h_inner_h))**2
+        upsilon += (noise_weighted_inner_product(signal_segment,data_segment,df,psd_segment,phase_maximize=True)/(np.sqrt(h_inner_h)))**2
 
     return(upsilon.item())
 
