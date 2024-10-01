@@ -718,7 +718,15 @@ class Post_Search_Inference_Zeus:
 
         # Load in data
         self.data = cp.asarray(np.load(data_file_name))
+        # If dynamically computing the upper frequency
+        if 'compute_f_max_for_tile' in self.frequency_series_dict:
+            if self.frequency_series_dict['compute_f_max_for_tile'] == True:
+                # Frequency mask to cut off the frequency grid at the maximum frequency for integration
+                self.data = self.data[:,self.frequency_mask].copy()
 
+                # Save filtered version of frequencies 
+                self.cupy_to_numpy_save(self.data,'data_filtered.npy')
+    
         self.swarm_directory = swarm_directory
 
         # Load positions from final iteration of the search for one swarm   
@@ -758,11 +766,11 @@ class Post_Search_Inference_Zeus:
         axis_means = np.mean(self.initial_positions,axis=0)
         self.initial_positions = axis_means + Spread_multiplier*(self.initial_positions - axis_means)
 
-
-
     def generate_frequency_grids(self,):
         '''
         Generates the dense and sparse frequency grids for search. 
+        If provided data file and frequency series is pregenerated, load in the frequencies.
+
         Stores both on CPU and GPU.         
         '''
 
@@ -773,17 +781,56 @@ class Post_Search_Inference_Zeus:
 
         # Downsampling factor is used for the sparse frequency grid for interpolation
         self.downsampling_factor = self.frequency_series_dict['downsampling_factor']
+        
+        # If frequencies are already generated and stored in a file, load them in
+        if 'pregenerated_frequencies' in self.frequency_series_dict:
+            if self.frequency_series_dict['pregenerated_frequencies'] == True:
+                self.freqs = cp.asarray(np.load('freqs.npy'))
+                self.df = cp.diff(self.freqs)[1]
 
-        # Generating frequency grid (dense)
-        self.df = 1/self.T_obs
+            else:
+                self.df = 1/self.T_obs
+                self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
+        else:
+                self.df = 1/self.T_obs
+                self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
 
-        self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
+        # Option to compute the maximum frequency for integration based on the search tile. 
+        if 'compute_f_max_for_tile' in self.frequency_series_dict:
+            if self.frequency_series_dict['compute_f_max_for_tile'] == True:
+
+                mc_prior = self.prior_bounds[0]
+                eta_prior = self.prior_bounds[1]
+                f0_prior = np.array(self.prior_bounds[6])*2 # factor of 2 as we need GW
+                e0_prior = self.prior_bounds[7]
+
+                search_tile_prior = np.array([mc_prior,
+                                              eta_prior,
+                                              f0_prior,
+                                              e0_prior])
+                # Maximum frequency of integration for whole search 
+                self.fmax = TaylorF2Ecc.f_high_tile_compute(search_tile_prior,
+                                                   self.T_obs,
+                                                   f_psd_high=self.fmax, # set default value for f_high in case we are merging within observation time to be whatever the user sets
+                                                   safety_factor=1.1)
+                print('f_max for search for this tile:',self.fmax)
+
+                # Frequency mask to cut off the frequency grid at the maximum frequency for integration
+                # Used below and when importing data. 
+                self.frequency_mask = self.freqs<=self.fmax
+
+                self.freqs = self.freqs[self.frequency_mask].copy() # On GPU
+
+                # Save filtered version of frequencies 
+                self.cupy_to_numpy_save(self.freqs,'freqs_filtered.npy')
+
+        # If not just use the whole frequency grid
         self.freqs_on_CPU = self.freqs.get() # On CPU
 
         self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU
 
-        self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
-
+        self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)    
+    
     def generate_psd(self,):
         '''
         Generates the PSD for the search.
