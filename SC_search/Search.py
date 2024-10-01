@@ -719,13 +719,11 @@ class Post_Search_Inference_Zeus:
         # Load in data
         self.data = cp.asarray(np.load(data_file_name))
         # If dynamically computing the upper frequency
-        if 'compute_f_max_for_tile' in self.frequency_series_dict:
-            if self.frequency_series_dict['compute_f_max_for_tile'] == True:
-                # Frequency mask to cut off the frequency grid at the maximum frequency for integration
-                self.data = self.data[:,self.frequency_mask].copy()
+        if 'pregenerated_frequencies' in self.frequency_series_dict:
+            if self.frequency_series_dict['pregenerated_frequencies'] == True:
+                # Already filtered down to the right grid
+                self.data = cp.asarray(np.load('../data_filtered.npy'))
 
-                # Save filtered version of frequencies 
-                self.cupy_to_numpy_save(self.data,'data_filtered.npy')
     
         self.swarm_directory = swarm_directory
 
@@ -785,8 +783,9 @@ class Post_Search_Inference_Zeus:
         # If frequencies are already generated and stored in a file, load them in
         if 'pregenerated_frequencies' in self.frequency_series_dict:
             if self.frequency_series_dict['pregenerated_frequencies'] == True:
-                self.freqs = cp.asarray(np.load('../freqs.npy')) # Assumes in above file
+                self.freqs = cp.asarray(np.load('../freqs_filtered.npy')) # Assumes in above directory
                 self.df = cp.diff(self.freqs)[1]
+                self.fmax = self.freqs[-1]
 
             else:
                 self.df = 1/self.T_obs
@@ -794,35 +793,6 @@ class Post_Search_Inference_Zeus:
         else:
                 self.df = 1/self.T_obs
                 self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
-
-        # Option to compute the maximum frequency for integration based on the search tile. 
-        if 'compute_f_max_for_tile' in self.frequency_series_dict:
-            if self.frequency_series_dict['compute_f_max_for_tile'] == True:
-
-                mc_prior = self.prior_bounds[0]
-                eta_prior = self.prior_bounds[1]
-                f0_prior = np.array(self.prior_bounds[6])*2 # factor of 2 as we need GW
-                e0_prior = self.prior_bounds[7]
-
-                search_tile_prior = np.array([mc_prior,
-                                              eta_prior,
-                                              f0_prior,
-                                              e0_prior])
-                # Maximum frequency of integration for whole search 
-                self.fmax = TaylorF2Ecc.f_high_tile_compute(search_tile_prior,
-                                                   self.T_obs,
-                                                   f_psd_high=self.fmax, # set default value for f_high in case we are merging within observation time to be whatever the user sets
-                                                   safety_factor=1.1)
-                print('f_max for search for this tile:',self.fmax)
-
-                # Frequency mask to cut off the frequency grid at the maximum frequency for integration
-                # Used below and when importing data. 
-                self.frequency_mask = self.freqs<=self.fmax
-
-                self.freqs = self.freqs[self.frequency_mask].copy() # On GPU
-
-                # Save filtered version of frequencies 
-                self.cupy_to_numpy_save(self.freqs,'freqs_filtered.npy')
 
         # If not just use the whole frequency grid
         self.freqs_on_CPU = self.freqs.get() # On CPU
@@ -843,16 +813,6 @@ class Post_Search_Inference_Zeus:
         self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
-    def cupy_to_numpy_save(self,array,filename):
-        '''
-        Converts array to numpy from cupy and saves it to a file
-
-        Args:
-            array (array): The array to be saved.
-            filename (str): The filename to save the array to.
-        '''
-        np.save(filename,array.get())
-
         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
     
     def draw_distances_from_prior(self,):
