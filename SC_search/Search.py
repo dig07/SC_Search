@@ -785,7 +785,7 @@ class Post_Search_Inference_Zeus:
         # If frequencies are already generated and stored in a file, load them in
         if 'pregenerated_frequencies' in self.frequency_series_dict:
             if self.frequency_series_dict['pregenerated_frequencies'] == True:
-                self.freqs = cp.asarray(np.load('freqs.npy'))
+                self.freqs = cp.asarray(np.load('../freqs.npy')) # Assumes in above file
                 self.df = cp.diff(self.freqs)[1]
 
             else:
@@ -843,6 +843,15 @@ class Post_Search_Inference_Zeus:
         self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
+    def cupy_to_numpy_save(self,array,filename):
+        '''
+        Converts array to numpy from cupy and saves it to a file
+
+        Args:
+            array (array): The array to be saved.
+            filename (str): The filename to save the array to.
+        '''
+        np.save(filename,array.get())
 
         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
     
