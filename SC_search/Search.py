@@ -718,11 +718,6 @@ class Post_Search_Inference_Zeus:
 
         # Load in data
         self.data = cp.asarray(np.load(data_file_name))
-        # If dynamically computing the upper frequency
-        if 'pregenerated_frequencies' in self.frequency_series_dict:
-            if self.frequency_series_dict['pregenerated_frequencies'] == True:
-                # Already filtered down to the right grid
-                self.data = cp.asarray(np.load('../data_filtered.npy'))
 
     
         self.swarm_directory = swarm_directory
@@ -785,7 +780,7 @@ class Post_Search_Inference_Zeus:
             if self.frequency_series_dict['pregenerated_frequencies'] == True:
                 self.freqs = cp.asarray(np.load('../freqs_filtered.npy')) # Assumes in above directory
                 self.df = cp.diff(self.freqs)[1]
-                self.fmax = self.freqs[-1]
+                self.fmax = self.freqs[-1].get()
 
             else:
                 self.df = 1/self.T_obs

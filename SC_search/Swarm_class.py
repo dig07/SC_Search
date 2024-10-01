@@ -186,7 +186,7 @@ class Semi_Coherent_Model_Inference(PySO.Model):
             float: The log likelihood (Any quantity to be optimised).
         
         '''
-        in_bounds = np.all(self.bounds[:,0]<params) and np.all(params<self.bounds[:,1])
+        in_bounds = np.all(self.bounds[:,0]<=params) and np.all(params<=self.bounds[:,1])
 
         if not in_bounds:
             return -np.inf
