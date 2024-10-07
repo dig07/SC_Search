@@ -131,6 +131,11 @@ class Distributions:
         self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
+        
+        # Adding in confusion noise 
+        self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
+        self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
+        self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
 
         self.psd_array = np.array([self.psd_A,self.psd_E,self.psd_T]) ## Agnostic to CPU or GPU
     
