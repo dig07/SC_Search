@@ -22,7 +22,8 @@ class Distributions:
     '''
     def __init__(self, 
                  frequency_series_dict, 
-                 source_parameters
+                 source_parameters,
+                 confusion=False
                  ):
         '''
         Initializes a new instance of the Distributions class.
@@ -32,6 +33,7 @@ class Distributions:
                 time of observation etc. 
             source_parameters (list): A dictionary containing source parameters for the true injection. Should be a nested list. Every item in this list
                 is a new source. 
+            confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -42,7 +44,7 @@ class Distributions:
         self.generate_frequency_grids()
 
         # Generate PSD
-        self.generate_psd()
+        self.generate_psd(confusion=confusion)
 
         # TODO: Change the function being injected to the direct FFT grid (no interpolation) one just to be rigorous 
 
@@ -119,7 +121,7 @@ class Distributions:
 
         return noise_        
 
-    def generate_psd(self,):
+    def generate_psd(self,confusion=False):
         '''
         Generates the PSD for the search.
 
@@ -131,11 +133,12 @@ class Distributions:
         self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
-        
-        # Adding in confusion noise 
-        self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
-        self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
-        self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
+
+        if confusion == True:
+            # Adding in confusion noise 
+            self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
+            self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
+            self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
 
         self.psd_array = np.array([self.psd_A,self.psd_E,self.psd_T]) ## Agnostic to CPU or GPU
     

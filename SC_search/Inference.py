@@ -31,7 +31,8 @@ class dynesty_inference():
                     load_data_file=True,
                     data_file_name=None, 
                     include_noise=False,
-                    include_spin=False):
+                    include_spin=False,
+                    confusion=False):
         '''
         Initialize the Inference object.
 
@@ -45,6 +46,8 @@ class dynesty_inference():
             data_file_name (str): The name of the data file to load.
             include_noise (bool): Whether to include noise in the generated injection data.
             include_spin (bool): Whether to include spin in the parameter estimation. 
+            confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
+
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -60,7 +63,7 @@ class dynesty_inference():
         self.generate_frequency_grids()
 
         # Generate PSD
-        self.generate_psd()
+        self.generate_psd(confusion=confusion)
 
         # TODO: Change the function being injected to the direct FFT grid (no interpolation) one just to be rigorous 
         # Search is being tuned for these so hardcoded for now
@@ -143,7 +146,7 @@ class dynesty_inference():
 
         return noise_        
 
-    def generate_psd(self,):
+    def generate_psd(self,confusion=False):
         '''
         Generates the PSD for the search.
 
@@ -156,10 +159,11 @@ class dynesty_inference():
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
-        # Adding in confusion noise 
-        self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
-        self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
-        self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
+        if confusion == True:
+            # Adding in confusion noise 
+            self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
+            self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
+            self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
 
 
         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
