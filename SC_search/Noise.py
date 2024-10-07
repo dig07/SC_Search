@@ -325,7 +325,7 @@ def Sconf_f1(a1, b1, Tobs):
         Tobs (float): observation time in seconds
     Returns:
         f1 (float): confusion noise parameter f1
-    """"
+    """
     f1 = 10.**b1 * (Tobs/Tref)**a1
     return f1
     

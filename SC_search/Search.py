@@ -817,7 +817,7 @@ class Post_Search_Inference_Zeus:
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
-        if confusion = True:
+        if confusion == True:
             # Adding in confusion noise 
             self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
             self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
