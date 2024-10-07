@@ -227,6 +227,11 @@ class Search:
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
+        # Adding in confusion noise 
+        self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
+        self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
+        self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
+
         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T])
     
     def generate_injection_data(self,include_noise=True):
@@ -705,7 +710,7 @@ class Post_Search_Inference_Zeus:
             self.spin_waveform = True
         else:
             self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
-            self.Ndim = 10 # 12D parameter space (TaylorF2+e0+chi1+chi2)
+            self.Ndim = 10 # 10D parameter space (TaylorF2+e0)
             self.spin_waveform = False
 
         self.waveform_args = {'freqs_sparse':self.freqs_sparse,
@@ -718,10 +723,8 @@ class Post_Search_Inference_Zeus:
 
         # Load in data
         self.data = cp.asarray(np.load(data_file_name))
-
     
         self.swarm_directory = swarm_directory
-
         # Load positions from final iteration of the search for one swarm   
             # Note this does not include distances!!! Since the search statistic does not search over that
         swarm_final_positions = pd.read_csv(self.swarm_directory +'/final_positions.csv').to_numpy()
@@ -808,6 +811,12 @@ class Post_Search_Inference_Zeus:
         self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
+        
+        # Adding in confusion noise 
+        self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
+        self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
+        self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
+
         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
     
     def draw_distances_from_prior(self,):
