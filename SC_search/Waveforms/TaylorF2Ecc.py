@@ -5,7 +5,7 @@ try:
     logging.warning(' WAVEFORMS: CuPy found! Using CuPy for waveform generation')
     import numpy as numpy 
     use_GPU = True
-    # from pyWaveformBuild import direct_sum_wrap as direct_sum_wrap_gpu
+    from pyWaveformBuild import direct_sum_wrap as direct_sum_wrap_gpu
 
 
 except(ImportError, ModuleNotFoundError) as e:
@@ -13,7 +13,7 @@ except(ImportError, ModuleNotFoundError) as e:
     import numpy as np 
     import numpy as numpy
     use_GPU = False
-    # from pyWaveformBuild_cpu import direct_sum_wrap as direct_sum_wrap_cpu
+    from pyWaveformBuild_cpu import direct_sum_wrap as direct_sum_wrap_cpu
 
 try: 
     import alb_TDI_WFs as alb_TDI
