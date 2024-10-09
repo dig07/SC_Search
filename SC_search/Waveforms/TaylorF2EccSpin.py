@@ -429,7 +429,7 @@ def balrog_response(params, freqs, f_high, T_obs, engine, TDIType, logging=False
 
     return(signal)
 
-def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
+def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,TDIversion=1,logging=False):
     '''
     Computes waveform and runs it through the BBHx response. The response model is the same as that in arxiv:1806.10734v1 (Marsat and Baker).
     Response is pretty close to Balrog, but not exactly the same. 
@@ -440,6 +440,7 @@ def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
         f_high (float): Upper frequency limit.
         T_obs (float): Observation time.
         TDIType (str): Type of Time Delay Interferometry (TDI) channel. ('XYZ' or 'AET' for BBHx response)
+        TDIversion (int, optional): Version of the TDI response to use. Defaults to 1. (Yorsch uses 2)
         logging (bool, optional): Whether to enable logging. Defaults to False.
 
     Returns:
@@ -510,7 +511,7 @@ def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
     # Length of frequency array for computation 
     length = freqs[freq_mask].shape[0]
 
-    # Only one harmonic for now 
+    # Only one harmonic for now     
     num_modes = 1
     
     # params are amp, phase, tf, transferL1re, transferL1im, transferL2re, transferL2im, transferL3re, transferL3im
@@ -566,14 +567,22 @@ def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,logging=False):
     # Push into XYZ array (Probably can be optimized alot more)
     XYZ = np.zeros((3,freqs.size),dtype=complex)
 
-    # Squeeze just collapses the dimensions with size one, in our case the dimension is num_bin as we only have one binary
-    # Multiplies by frequency mode factor to get waveform into same convention as Balrog. 
-    XYZ[:,freq_mask] = out.squeeze()*bbhx_pre_factor*1/masked_freqs
+    if TDIversion == 1: 
+        # Squeeze just collapses the dimensions with size one, in our case the dimension is num_bin as we only have one binary
+        # Multiplies by frequency mode factor to get waveform into same convention as Balrog. 
+        XYZ[:,dense_frequency_mask] = data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
+
+    if TDIversion == 2:
+        # TDI 2 conversion factor 
+        x = np.pi*Armlength*freqs_dense[dense_frequency_mask]
+        TDI_2_factor = -(np.exp(2*1j*x)-1)#-2*1j*np.sin(4*x)*np.exp(1j*4*x)
+        XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
+    return(XYZ)
     
     return(XYZ)
 
 
-def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,f_high,T_obs,TDIType,logging=False):
+def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,f_high,T_obs,TDIType,TDIversion=1,logging=False):
     '''
     Computes waveform and runs it through the BBHx response. Same as the function BBHx_response_direct, 
         but uses interpolation to speed up the response calculation.
@@ -586,6 +595,7 @@ def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,f_high,T_obs,T
         f_high (float): Upper frequency limit.
         T_obs (float): Observation time.
         TDIType (str): Type of Time Delay Interferometry (TDI) channel. ('XYZ' or 'AET' for BBHx response)
+        TDIversion (int, optional): Version of the TDI response to use. Defaults to 1. (Yorsch uses 2)
         logging (bool, optional): Whether to enable logging. Defaults to False.
 
     Returns:
@@ -710,11 +720,18 @@ def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,f_high,T_obs,T
 
     
     XYZ = numpy.zeros((3,freqs_dense.size),dtype=complex)
-    XYZ[:,dense_frequency_mask] = data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
 
+    if TDIversion == 1: 
+        XYZ[:,dense_frequency_mask] = data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
+
+    if TDIversion == 2:
+        # TDI 2 conversion factor 
+        x = np.pi*Armlength*freqs_dense[dense_frequency_mask]
+        TDI_2_factor = -(np.exp(2*1j*x)-1)#-2*1j*np.sin(4*x)*np.exp(1j*4*x)
+        XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
     return(XYZ)
 
-def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CPU,f_high,T_obs,TDIType,logging=False):
+def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CPU,f_high,T_obs,TDIType,TDIversion=1,logging=False):
     '''
     Computes waveform and runs it through the BBHx response. Same as the function BBHx_response_interpolate_CPU, but if GPU is available  
         it will use that.
@@ -726,6 +743,7 @@ def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CP
         f_high (float): Upper frequency limit.
         T_obs (float): Observation time.
         TDIType (str): Type of Time Delay Interferometry (TDI) channel. ('XYZ' or 'AET' for BBHx response)
+        TDIversion (int, optional): Version of the TDI response to use. Defaults to 1. (Yorsch uses 2)
         logging (bool, optional): Whether to enable logging. Defaults to False.
 
     Returns:
@@ -855,6 +873,13 @@ def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CP
         data_out[:, start_i : start_i + length_i] = temp
 
     XYZ = np.zeros((3,freqs_dense.size),dtype=complex)
-    XYZ[:,freq_mask_dense] = data_out.squeeze()*bbhx_pre_factor*1/freqs_dense_masked
 
+    if TDIversion == 1: 
+        XYZ[:,dense_frequency_mask] = data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
+
+    if TDIversion == 2:
+        # TDI 2 conversion factor 
+        x = 4*np.pi*Armlength*freqs_dense[dense_frequency_mask]
+        TDI_2_factor = -(np.exp(2*1j*x)-1)#-2*1j*np.sin(4*x)*np.exp(1j*4*x)
+        XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
     return(XYZ)
