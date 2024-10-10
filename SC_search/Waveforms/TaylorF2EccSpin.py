@@ -579,7 +579,6 @@ def BBHx_response_direct(params,freqs,f_high,T_obs,TDIType,TDIversion=1,logging=
         XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
     return(XYZ)
     
-    return(XYZ)
 
 
 def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,f_high,T_obs,TDIType,TDIversion=1,logging=False):
