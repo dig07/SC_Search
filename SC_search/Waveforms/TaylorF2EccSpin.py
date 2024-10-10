@@ -832,7 +832,7 @@ def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CP
     
     out_buffer = out_buffer.flatten().copy()
 
-
+    dense_frequency_mask = freqs_dense>=f_low
     dense_freqs_length = freqs_dense_masked.shape[0]
 
     # Generate response 
