@@ -184,7 +184,7 @@ class Search:
 
                 # Frequency mask to cut off the frequency grid at the maximum frequency for integration
                 # Used below and when importing data. 
-                self.frequency_mask = self.freqs<=self.fmax
+                self.frequency_mask = ((self.freqs<=self.fmax) & (self.freqs>=self.fmin))
 
                 self.freqs = self.freqs[self.frequency_mask].copy() # On GPU
 
@@ -195,6 +195,7 @@ class Search:
         self.freqs_on_CPU = self.freqs.get() # On CPU
 
         self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU
+        print('Sparse frequency grid size:',self.freqs_sparse.size)
 
         self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
 
