@@ -8,6 +8,11 @@ try:
 except ImportError:
     print('Zeus not installed')
 
+try: 
+    from ldc.lisa.noise import get_noise_model
+except ImportError:
+    print('LDC not installed')
+
 import numpy as np 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -22,6 +27,7 @@ import PySO
 from .Veto import *
 from .Inference import dynesty_inference
 import networkx as nx
+from .Waveforms import Constants as const
 
 class Search:
     '''
@@ -43,7 +49,8 @@ class Search:
                  noise_only_injection = False,
                  masking = None,
                  include_spin = False, 
-                 confusion = False):
+                 confusion = False,
+                 LDC_PSD= False):
         '''
         Initializes a new instance of the Search class.
 
@@ -64,6 +71,7 @@ class Search:
             masking (list, optional): A list of booleans indicating wether to use the masked upsilon function at each segment. Defaults to [False]*len(segment_ladder).
             include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
+            LDC_PSD (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -84,7 +92,7 @@ class Search:
         self.generate_frequency_grids()
 
         # Generate PSD
-        self.generate_psd(confusion=confusion)
+        self.generate_psd(confusion=confusion,LDC=LDC_PSD)
 
         # TODO: Change the function being injected to the direct FFT grid (no interpolation) one just to be rigorous 
 
@@ -217,18 +225,35 @@ class Search:
 
         return noise_        
 
-    def generate_psd(self,confusion=False):
+    def generate_psd(self,LDC=False,confusion=False):
         '''
         Generates the PSD for the search.
 
         - Harcoded to Michelson PSD for now 
+
+        Args:
+            LDC (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
+            confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
         '''
         # Generate the PSD
-        Sdisp = Sdisp_SciRD(self.freqs)
-        Sopt = Sopt_SciRD(self.freqs)
-        self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
-        self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
-        self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
+
+        if LDC == True:
+            # Conventions
+            c = const.clight
+            L = 2.5e+9/c # Armlength in seconds
+            prefactor = (2*np.pi*1j*self.freqs*L)
+
+            noise = get_noise_model("sangria", self.freqs, wd=0)
+            psd_A = noise.psd(self.freqs, option='A', tdi2 = False)*1/np.abs(prefactor)**2
+            psd_E = noise.psd(self.freqs, option='E', tdi2 = False)*1/np.abs(prefactor)**2
+            psd_T = noise.psd(self.freqs, option='T', tdi2 = False)*1/np.abs(prefactor)**2
+
+        else:
+            Sdisp = Sdisp_SciRD(self.freqs)
+            Sopt = Sopt_SciRD(self.freqs)
+            self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
+            self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
+            self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
         if confusion == True:
             # Adding in confusion noise 
@@ -670,7 +695,8 @@ class Post_Search_Inference_Zeus:
                  Spread_multiplier=None,
                  terminate_on_max_iter_or_IAT = 'max_iter',
                  include_spin = False,
-                 conufusion = False):
+                 conufusion = False,
+                 LDC_PSD = False):
         '''
         Initializes a new instance of the Post Search Inference class.
 
@@ -693,6 +719,7 @@ class Post_Search_Inference_Zeus:
                 Defaults to 'max_iter', can also be 'IAT'.
             include_spin (bool, optional): A flag indicating whether to include spin parameters in the inference. Defaults to False.
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
+            LDC_PSD (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -707,7 +734,7 @@ class Post_Search_Inference_Zeus:
         self.generate_frequency_grids()
 
         # Generate PSD
-        self.generate_psd(confusion=confusion)
+        self.generate_psd(confusion=confusion,LDC_PSD=LDC_PSD)
 
         # Search is being tuned for these so hardcoded for now
         if include_spin == True:
@@ -805,18 +832,35 @@ class Post_Search_Inference_Zeus:
 
         self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)    
     
-    def generate_psd(self,confusion=False):
+    def generate_psd(self,LDC=False,confusion=False):
         '''
         Generates the PSD for the search.
 
         - Harcoded to Michelson PSD for now 
+
+        Args:
+            LDC (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
+            confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
         '''
         # Generate the PSD
-        Sdisp = Sdisp_SciRD(self.freqs)
-        Sopt = Sopt_SciRD(self.freqs)
-        self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
-        self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
-        self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
+
+        if LDC == True:
+            # Conventions
+            c = const.clight
+            L = 2.5e+9/c # Armlength in seconds
+            prefactor = (2*np.pi*1j*self.freqs*L)
+
+            noise = get_noise_model("sangria", self.freqs, wd=0)
+            psd_A = noise.psd(self.freqs, option='A', tdi2 = False)*1/np.abs(prefactor)**2
+            psd_E = noise.psd(self.freqs, option='E', tdi2 = False)*1/np.abs(prefactor)**2
+            psd_T = noise.psd(self.freqs, option='T', tdi2 = False)*1/np.abs(prefactor)**2
+
+        else:
+            Sdisp = Sdisp_SciRD(self.freqs)
+            Sopt = Sopt_SciRD(self.freqs)
+            self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
+            self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
+            self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
         if confusion == True:
             # Adding in confusion noise 
@@ -824,7 +868,7 @@ class Post_Search_Inference_Zeus:
             self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
             self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
 
-        self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
+        self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T])
     
     def draw_distances_from_prior(self,):
         '''
