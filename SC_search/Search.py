@@ -244,9 +244,9 @@ class Search:
             prefactor = (2*np.pi*1j*self.freqs*L)
 
             noise = get_noise_model("sangria", self.freqs, wd=0)
-            psd_A = noise.psd(self.freqs, option='A', tdi2 = False)*1/np.abs(prefactor)**2
-            psd_E = noise.psd(self.freqs, option='E', tdi2 = False)*1/np.abs(prefactor)**2
-            psd_T = noise.psd(self.freqs, option='T', tdi2 = False)*1/np.abs(prefactor)**2
+            self.psd_A = noise.psd(self.freqs, option='A', tdi2 = False)*1/np.abs(prefactor)**2
+            self.psd_E = noise.psd(self.freqs, option='E', tdi2 = False)*1/np.abs(prefactor)**2
+            self.psd_T = noise.psd(self.freqs, option='T', tdi2 = False)*1/np.abs(prefactor)**2
 
         else:
             Sdisp = Sdisp_SciRD(self.freqs)
@@ -851,9 +851,9 @@ class Post_Search_Inference_Zeus:
             prefactor = (2*np.pi*1j*self.freqs*L)
 
             noise = get_noise_model("sangria", self.freqs, wd=0)
-            psd_A = noise.psd(self.freqs, option='A', tdi2 = False)*1/np.abs(prefactor)**2
-            psd_E = noise.psd(self.freqs, option='E', tdi2 = False)*1/np.abs(prefactor)**2
-            psd_T = noise.psd(self.freqs, option='T', tdi2 = False)*1/np.abs(prefactor)**2
+            self.psd_A = noise.psd(self.freqs, option='A', tdi2 = False)*1/np.abs(prefactor)**2
+            self.psd_E = noise.psd(self.freqs, option='E', tdi2 = False)*1/np.abs(prefactor)**2
+            self.psd_T = noise.psd(self.freqs, option='T', tdi2 = False)*1/np.abs(prefactor)**2
 
         else:
             Sdisp = Sdisp_SciRD(self.freqs)
