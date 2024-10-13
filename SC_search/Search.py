@@ -241,7 +241,6 @@ class Search:
         # Generate the PSD
 
         if LDC == True:
-            IF 
             # Conventions
             c = const.clight
             L = 2.5e+9/c # Armlength in seconds
@@ -858,7 +857,6 @@ class Post_Search_Inference_Zeus:
         # Generate the PSD
 
         if LDC == True:
-            IF 
             # Conventions
             c = const.clight
             L = 2.5e+9/c # Armlength in seconds
