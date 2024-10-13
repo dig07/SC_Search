@@ -843,7 +843,7 @@ class Post_Search_Inference_Zeus:
 
         self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)    
     
-     def generate_psd(self,LDC=False,confusion=False,LDC_PSD_TDI_version=1):
+    def generate_psd(self,LDC=False,confusion=False,LDC_PSD_TDI_version=1):
         '''
         Generates the PSD for the search.
 
@@ -852,7 +852,7 @@ class Post_Search_Inference_Zeus:
         Args:
             LDC (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
-            LDC_PSD_TDI_version (int, optional): Wether to use the LDC TDI-1 PSD or TDI-2 PSD.
+            LDC_PSD_TDI_version (int, optional):  Wether to use the LDC TDI-1 PSD or TDI-2 PSD.
         '''
         # Generate the PSD
 
@@ -886,7 +886,7 @@ class Post_Search_Inference_Zeus:
             self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
 
         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T])
-    
+
     def draw_distances_from_prior(self,):
         '''
         Draws a distances from the prior and fills it into the initial guesses for the inference. 
