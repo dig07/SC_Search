@@ -50,7 +50,8 @@ class Search:
                  masking = None,
                  include_spin = False, 
                  confusion = False,
-                 LDC_PSD= False):
+                 LDC_PSD = False,
+                 LDC_PSD_TDI_version = 1):
         '''
         Initializes a new instance of the Search class.
 
@@ -72,6 +73,7 @@ class Search:
             include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
             LDC_PSD (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
+            LDC_PSD_TDI_version (int, optional): Wether to use the LDC TDI-1 PSD or TDI-2 PSD.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -92,7 +94,7 @@ class Search:
         self.generate_frequency_grids()
 
         # Generate PSD
-        self.generate_psd(confusion=confusion,LDC=LDC_PSD)
+        self.generate_psd(confusion=confusion,LDC=LDC_PSD,LDC_PSD_TDI_version=LDC_PSD_TDI_version)
 
         # TODO: Change the function being injected to the direct FFT grid (no interpolation) one just to be rigorous 
 
@@ -225,7 +227,7 @@ class Search:
 
         return noise_        
 
-    def generate_psd(self,LDC=False,confusion=False):
+    def generate_psd(self,LDC=False,confusion=False,LDC_PSD_TDI_version=1):
         '''
         Generates the PSD for the search.
 
@@ -234,19 +236,26 @@ class Search:
         Args:
             LDC (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
+            LDC_PSD_TDI_version (int, optional):  Wether to use the LDC TDI-1 PSD or TDI-2 PSD.
         '''
         # Generate the PSD
 
         if LDC == True:
+            IF 
             # Conventions
             c = const.clight
             L = 2.5e+9/c # Armlength in seconds
             prefactor = (2*np.pi*1j*self.freqs*L)
+            
+            if LDC_PSD_TDI_version == 1:
+                tdi2 = False
+            elif LDC_PSD_TDI_version == 2:
+                tdi2 = True
 
             noise = get_noise_model("sangria", self.freqs, wd=0)
-            self.psd_A = noise.psd(self.freqs, option='A', tdi2 = False)*1/np.abs(prefactor)**2
-            self.psd_E = noise.psd(self.freqs, option='E', tdi2 = False)*1/np.abs(prefactor)**2
-            self.psd_T = noise.psd(self.freqs, option='T', tdi2 = False)*1/np.abs(prefactor)**2
+            self.psd_A = noise.psd(self.freqs, option='A', tdi2 = tdi2)*1/np.abs(prefactor)**2
+            self.psd_E = noise.psd(self.freqs, option='E', tdi2 = tdi2)*1/np.abs(prefactor)**2
+            self.psd_T = noise.psd(self.freqs, option='T', tdi2 = tdi2)*1/np.abs(prefactor)**2
 
         else:
             Sdisp = Sdisp_SciRD(self.freqs)
@@ -256,7 +265,7 @@ class Search:
             self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
         if confusion == True:
-            # Adding in confusion noise 
+            # Adding in confusion noise wont work with LDC psd 
             self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
             self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
             self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
@@ -696,7 +705,8 @@ class Post_Search_Inference_Zeus:
                  terminate_on_max_iter_or_IAT = 'max_iter',
                  include_spin = False,
                  conufusion = False,
-                 LDC_PSD = False):
+                 LDC_PSD = False,
+                 LDC_PSD_version = 1):
         '''
         Initializes a new instance of the Post Search Inference class.
 
@@ -720,6 +730,8 @@ class Post_Search_Inference_Zeus:
             include_spin (bool, optional): A flag indicating whether to include spin parameters in the inference. Defaults to False.
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
             LDC_PSD (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
+            LDC_PSD_TDI_version (int, optional): Wether to use the LDC TDI-1 PSD or TDI-2 PSD.
+
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -734,7 +746,7 @@ class Post_Search_Inference_Zeus:
         self.generate_frequency_grids()
 
         # Generate PSD
-        self.generate_psd(confusion=confusion,LDC_PSD=LDC_PSD)
+        self.generate_psd(confusion=confusion,LDC=LDC_PSD,LDC_PSD_TDI_version=LDC_PSD_TDI_version)
 
         # Search is being tuned for these so hardcoded for now
         if include_spin == True:
@@ -832,7 +844,7 @@ class Post_Search_Inference_Zeus:
 
         self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)    
     
-    def generate_psd(self,LDC=False,confusion=False):
+     def generate_psd(self,LDC=False,confusion=False,LDC_PSD_TDI_version=1):
         '''
         Generates the PSD for the search.
 
@@ -841,19 +853,26 @@ class Post_Search_Inference_Zeus:
         Args:
             LDC (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
+            LDC_PSD_TDI_version (int, optional): Wether to use the LDC TDI-1 PSD or TDI-2 PSD.
         '''
         # Generate the PSD
 
         if LDC == True:
+            IF 
             # Conventions
             c = const.clight
             L = 2.5e+9/c # Armlength in seconds
             prefactor = (2*np.pi*1j*self.freqs*L)
+            
+            if LDC_PSD_TDI_version == 1:
+                tdi2 = False
+            elif LDC_PSD_TDI_version == 2:
+                tdi2 = True
 
             noise = get_noise_model("sangria", self.freqs, wd=0)
-            self.psd_A = noise.psd(self.freqs, option='A', tdi2 = False)*1/np.abs(prefactor)**2
-            self.psd_E = noise.psd(self.freqs, option='E', tdi2 = False)*1/np.abs(prefactor)**2
-            self.psd_T = noise.psd(self.freqs, option='T', tdi2 = False)*1/np.abs(prefactor)**2
+            self.psd_A = noise.psd(self.freqs, option='A', tdi2 = tdi2)*1/np.abs(prefactor)**2
+            self.psd_E = noise.psd(self.freqs, option='E', tdi2 = tdi2)*1/np.abs(prefactor)**2
+            self.psd_T = noise.psd(self.freqs, option='T', tdi2 = tdi2)*1/np.abs(prefactor)**2
 
         else:
             Sdisp = Sdisp_SciRD(self.freqs)
@@ -863,7 +882,7 @@ class Post_Search_Inference_Zeus:
             self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
 
         if confusion == True:
-            # Adding in confusion noise 
+            # Adding in confusion noise wont work with LDC psd 
             self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
             self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
             self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
