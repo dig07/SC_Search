@@ -874,11 +874,11 @@ def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CP
     XYZ = np.zeros((3,freqs_dense.size),dtype=complex)
 
     if TDIversion == 1: 
-        XYZ[:,dense_frequency_mask] = data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
+        XYZ[:,dense_frequency_mask] = data_out.squeeze()*1/(2j*numpy.pi*Armlength*freqs_dense[dense_frequency_mask])
 
     if TDIversion == 2:
         # TDI 2 conversion factor 
         x = 4*np.pi*Armlength*freqs_dense[dense_frequency_mask]
         TDI_2_factor = -(np.exp(2*1j*x)-1)#-2*1j*np.sin(4*x)*np.exp(1j*4*x)
-        XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
+        XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength*freqs_dense[dense_frequency_mask])
     return(XYZ)

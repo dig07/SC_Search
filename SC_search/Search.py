@@ -51,7 +51,8 @@ class Search:
                  include_spin = False, 
                  confusion = False,
                  LDC_PSD = False,
-                 LDC_PSD_TDI_version = 1):
+                 LDC_PSD_TDI_version = 1,
+                 response_TDI_version = 1):
         '''
         Initializes a new instance of the Search class.
 
@@ -73,7 +74,8 @@ class Search:
             include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
             LDC_PSD (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
-            LDC_PSD_TDI_version (int, optional): Wether to use the LDC TDI-1 PSD or TDI-2 PSD.
+            LDC_PSD_TDI_version (int, optional): Wether to use the LDC TDI-1 PSD or TDI-2 PSD. (default is 1)
+            response_TDI_version (int, optional): If the response should use TDI-1 or TDI-2 (using an approximation to go from TDI-1 to TDI-2). Defaults to 1.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -113,7 +115,8 @@ class Search:
                               'f_high':self.fmax,
                               'T_obs':self.T_obs,
                               'TDIType':'AET',
-                              'logging': False}
+                              'logging': False,
+                              'TDIversion':response_TDI_version}
 
         # Generate signal or load the signal we will be searching for 
         if load_data_file == True:
@@ -705,7 +708,8 @@ class Post_Search_Inference_Zeus:
                  include_spin = False,
                  conufusion = False,
                  LDC_PSD = False,
-                 LDC_PSD_version = 1):
+                 LDC_PSD_version = 1,
+                 response_TDI_version = 1):
         '''
         Initializes a new instance of the Post Search Inference class.
 
@@ -730,7 +734,7 @@ class Post_Search_Inference_Zeus:
             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
             LDC_PSD (bool, optional): A flag indicating whether to use the LDC PSD. Defaults to False.
             LDC_PSD_TDI_version (int, optional): Wether to use the LDC TDI-1 PSD or TDI-2 PSD.
-
+            response_TDI_version (int, optional): If the response should use TDI-1 or TDI-2 (using an approximation to go from TDI-1 to TDI-2). Defaults to 1.
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -763,7 +767,8 @@ class Post_Search_Inference_Zeus:
                               'f_high':self.fmax,
                               'T_obs':self.T_obs,
                               'TDIType':'AET',
-                              'logging': False}
+                              'logging': False,
+                              'TDIversion':response_TDI_version}
 
         # Load in data
         self.data = cp.asarray(np.load(data_file_name))
