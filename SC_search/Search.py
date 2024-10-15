@@ -708,7 +708,7 @@ class Post_Search_Inference_Zeus:
                  include_spin = False,
                  conufusion = False,
                  LDC_PSD = False,
-                 LDC_PSD_version = 1,
+                 LDC_PSD_TDI_version = 1,
                  response_TDI_version = 1):
         '''
         Initializes a new instance of the Post Search Inference class.
