@@ -706,7 +706,7 @@ class Post_Search_Inference_Zeus:
                  Spread_multiplier=None,
                  terminate_on_max_iter_or_IAT = 'max_iter',
                  include_spin = False,
-                 conufusion = False,
+                 confusion = False,
                  LDC_PSD = False,
                  LDC_PSD_TDI_version = 1,
                  response_TDI_version = 1):
