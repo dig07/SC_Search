@@ -211,6 +211,27 @@ def TaylorF2EccSpin_s1_s2_to_spin_params(m1,m2,s1,s2):
 
     return(beta_15,beta_25,sigma)
 
+def chi_effective_from_spins(m1,m2,s1,s2):
+    '''
+    Compute the effective spin parameter from the component masses and spins
+    
+    NOTE: Assumes spins are aligned spins to orbital angular momentum vector. 
+
+    Args:
+        m1 (float): mass of the first component [solar masses]
+        m2 (float): mass of the second component [solar masses]
+        s1 (float): spin of the first component [dimensionless]
+        s2 (float): spin of the second component [dimensionless]
+
+    Returns:
+        chi_eff (float): effective spin parameter
+    '''
+
+    chi_eff = (s1*m1 + s2*m2)/(m1+m2)
+    return(chi_eff)
+
+
+
 def corner_mine(posteriors,
                 quantiles=[],
                 num_kde=50,
