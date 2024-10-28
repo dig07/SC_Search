@@ -167,6 +167,50 @@ def TaylorF2Ecc_mc_q_to_m1m2(parameters):
 
     return(parameters)
 
+def TaylorF2EccSpin_s1_s2_to_spin_params(m1,m2,s1,s2):
+    '''
+    Used to convert the aligned spin parameters to the quantities used for the TaylorF2EccSpin model
+
+    This function is mainly used in postprocessing steps.
+
+    Dont need to convert m1 and m2 to SI units as we only need ratios of masses, so the conversion factor drops out. 
+
+    Args:
+        m1 (float): mass of the first component [solar masses]
+        m2 (float): mass of the second component [solar masses]
+        s1 (float): spin of the first component [dimensionless]
+        s2 (float): spin of the second component [dimensionless]
+    
+    Returns:
+        beta_15 (float): 1.5 PN spin-orbit term
+        beta_25 (float): 2.5 PN spin-orbit term
+        sigma (float): 2 PN spin-spin term
+    '''
+    M = m1+m2
+    eta = (m1*m2)/(M**2)
+
+    # Compute the 1.5 PN term from s1 and s2 (Spin-orbit)
+    beta_15 = s1*(113/12*(m1**2)/(M**2)+25/4*eta) + s2*(113/12*(m2**2)/(M**2)+25/4*eta)
+    
+    # Compute the 2.5 PN term from s1 and s2 (Spin-orbit)
+    beta_25 = s1*((m1**2)/(M**2)*(-31319/1008+1159/24*eta)+eta*(-809/84+281/8*eta))+s2*((m2**2)/(M**2)*(-31319/1008+1159/24*eta)+eta*(-809/84+281/8*eta))
+
+    # Compute the 2 PN term from s1 and s2 (Spin-spin) (sigma)
+
+    # Standard spin-spin term
+    simga_s1s2 = 474/48*eta*s1*s2
+
+    # Quadrupole - monopole term
+    sigma_qm = 5*(s1**2*(m1**2)/(M**2)+s2**2*(m2**2)/(M**2))
+
+    # Self-spin interaction term 
+    sigma_self_spin = 1/16*(s1**2*(m1**2)/(M**2)+s2**2*(m2**2)/(M**2)) 
+
+    # Add them all together to get the 2PN term
+    sigma = simga_s1s2 + sigma_qm + sigma_self_spin
+
+    return(beta_15,beta_25,sigma)
+
 def corner_mine(posteriors,
                 quantiles=[],
                 num_kde=50,
