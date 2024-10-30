@@ -200,7 +200,7 @@ def time_to_merger(m1,m2,inc,e0,f_0,beta_15,beta_25,sigma):
         sigma (float): The 2 PN spin-spin term.
 
     Returns:
-        float: Time to merger in seconds.
+        tm (float): Time to merger in seconds.
     '''
     m1 = m1*MTsun 
     m2 = m2*MTsun 
@@ -225,7 +225,7 @@ def waveform_construct(m1,m2,inc,e0,D,freqs,s1,s2,f_low,f_high,coallesence_phase
 
     Args:
         m1 (float): Mass of the first object (solar masses).
-        m2 (float): Mass of the second object (solar masses)..
+        m2 (float): Mass of the second object (solar masses).
         inc (float): Inclination angle (rads).
         e0 (float): Initial eccentricity.
         D (float): Distance to the source (pc).
@@ -727,7 +727,7 @@ def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,f_high,T_obs,T
         # TDI 2 conversion factor 
         x = np.pi*Armlength*freqs_dense[dense_frequency_mask]
         TDI_2_factor = -(np.exp(2*1j*x)-1)#-2*1j*np.sin(4*x)*np.exp(1j*4*x)
-        XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength)*1/(freqs_dense[dense_frequency_mask])
+        XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength*freqs_dense[dense_frequency_mask])
     return(XYZ)
 
 def BBHx_response_interpolate(params,freqs_sparse,freqs_dense,freqs_sparse_on_CPU,f_high,T_obs,TDIType,TDIversion=1,logging=False):

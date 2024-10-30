@@ -230,6 +230,43 @@ def chi_effective_from_spins(m1,m2,s1,s2):
     chi_eff = (s1*m1 + s2*m2)/(m1+m2)
     return(chi_eff)
 
+def reconstruct_higherst_snr_from_waveform_posterior(posterior,logls,psd,waveform_object,df,waveform_args):
+    '''
+    Reconstruct the waveform with the highest SNR from the posterior samples. Use waveform with highest logl to reconstruct waveform.
+
+    Args:
+        posterior (array): posterior samples
+        logls (array): log likelihoods of the posterior samples
+        psd (array): power spectral density of the detector
+        waveform_object (object): waveform object
+        T_obs (float): observation time
+        waveform_args (dictionary): dictionary containing the waveform arguments
+    
+    Returns:
+        SNR (float): signal-to-noise ratio of the waveform
+    '''
+    # Find max logl 
+    max_logl_index = np.argmax(logls)
+    #Find posterior samples that correspond to max logl
+    max_logl_posterior = posterior[max_logl_index,:].copy()
+
+    # Artificially add a orbital phase of 0 to the waveform, does not affect SNR but need it to compute the waveform 
+    max_logl_posterior = np.insert(max_logl_posterior,7,0)
+
+    print(max_logl_posterior)
+
+    # Reconstruct waveform at max logl
+    source_params_transformed = TaylorF2Ecc_mc_eta_to_m1m2(max_logl_posterior.copy())
+    wf= waveform_object(source_params_transformed,**waveform_args) 
+
+    # Compute the SNR of the waveform
+    SNR = np.sqrt(noise_weighted_inner_product(wf, wf, df, psd, phase_maximize=True))
+
+    return(SNR,wf)
+
+    
+
+
 
 
 def corner_mine(posteriors,
