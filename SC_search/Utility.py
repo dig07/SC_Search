@@ -2,6 +2,7 @@
 Utility file contains useful utility functions for the code.
 '''
 from .Semi_Coherent_Functions import noise_weighted_inner_product
+from .Waveforms import TaylorF2Ecc, TaylorF2EccSpin
 import numpy as np 
 
 # Corner functions
@@ -244,6 +245,7 @@ def reconstruct_higherst_snr_from_waveform_posterior(posterior,logls,psd,wavefor
     
     Returns:
         SNR (float): signal-to-noise ratio of the waveform
+        wf (float): best matching waveform
     '''
     # Find max logl 
     max_logl_index = np.argmax(logls)
@@ -252,8 +254,6 @@ def reconstruct_higherst_snr_from_waveform_posterior(posterior,logls,psd,wavefor
 
     # Artificially add a orbital phase of 0 to the waveform, does not affect SNR but need it to compute the waveform 
     max_logl_posterior = np.insert(max_logl_posterior,7,0)
-
-    print(max_logl_posterior)
 
     # Reconstruct waveform at max logl
     source_params_transformed = TaylorF2Ecc_mc_eta_to_m1m2(max_logl_posterior.copy())
@@ -266,9 +266,38 @@ def reconstruct_higherst_snr_from_waveform_posterior(posterior,logls,psd,wavefor
 
     
 
+def generate_tc_prior_samples(priors,nsamples=1000000): 
+    '''
+    Generate samples from the prior for the time of coalescence
 
+    Args:
+        priors (array): array containing the priors
+            Structure: priors[0] = [Chirp mass prior]
+                       priors[1] = [Symmetric mass ratio prior]
+                       priors[2] = [Eccentricity prior]
+                       priors[3] = [Initial GW frequency prior]
+        nsamples (int): number of samples to generate
 
+    Returns:
+        tc_samples (array): samples from the prior
+    '''
 
+    # Generate samples from the prior    
+    initial_sampler = stats.qmc.LatinHypercube(4,strength=1)
+    samples = initial_sampler.random(n=nsamples)*(np.ptp(priors,axis=1)) + np.array(priors)[:,0]
+
+    # Convert samples from (mc,eta) -> (m1,m2)
+    m1,m2= component_masses_from_chirp_eta(samples[:,0],samples[:,1])
+
+    # Calculate time to merger for each prior sample
+    tcs = TaylorF2Ecc.time_to_merger(m1,m2,
+                                                3,#irrelevant (inc, need to fix this bug)
+                                                samples[:,-1],#e0 
+                                                samples[:,-2])# flow
+    print('Maximal prior width: ',np.ptp(tcs)/(365.25*24*60*60),' years')
+    
+    return(tcs)
+    
 def corner_mine(posteriors,
                 quantiles=[],
                 num_kde=50,

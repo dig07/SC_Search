@@ -725,7 +725,7 @@ def BBHx_response_interpolate_CPU(params,freqs_sparse,freqs_dense,f_high,T_obs,T
 
     if TDIversion == 2:
         # TDI 2 conversion factor 
-        x = np.pi*Armlength*freqs_dense[dense_frequency_mask]
+        x = 4*np.pi*Armlength*freqs_dense[dense_frequency_mask]
         TDI_2_factor = -(np.exp(2*1j*x)-1)#-2*1j*np.sin(4*x)*np.exp(1j*4*x)
         XYZ[:,dense_frequency_mask]= TDI_2_factor*data_out.squeeze()*1/(2j*numpy.pi*Armlength*freqs_dense[dense_frequency_mask])
     return(XYZ)
