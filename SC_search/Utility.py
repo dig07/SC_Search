@@ -298,44 +298,54 @@ def generate_tc_prior_samples(priors,nsamples=1000000):
     
     return(tcs)
     
-def compute_monte_carlo_estimate_of_sky_area(posterior_samples,KDE_downsampling=100,KDE_eval_points=10000,q=0.9):
+def compute_monte_carlo_estimate_of_sky_area(posterior_samples, KDE_downsampling=100, KDE_eval_points=10000, q=0.9):
     '''
     Compute the monte carlo estimate of the sky area for a given posterior at a given quantile level 
 
     Args:
-        posterior_samples (array): posterior samples over sky 
-        KDE_downsampling (int): downsampling factor for the KDE fitting
-        KDE_eval_points (int): number of points to evaluate the KDE at
+        posterior_samples (array): 
+            posterior samples over sky 
+            array shape must be (num_samples, 2)
+            with the 0 coloumn being lambda [rad] and the 1 column being sin(beta) [dim. less]
+        KDE_downsampling (int): 
+            downsampling factor for the KDE fitting
+            for speed, instead of making giant KDE with all posterior samples, we downsample
+        KDE_eval_points (int): 
+            number of points to evaluate the KDE at
         q (float): quantile level
+            in range 0<q<1, e.g. 0.9 means area of 90% credible region
     
     Returns:
-        sky_area (float): monte carlo estimate of the sky area
-    
+        sky_area (float): 
+            monte carlo estimate of the sky area [stradians]
     '''
 
     # KDE on sky posterior 
     sky_KDE = stats.gaussian_kde(posterior_samples[::KDE_downsampling].T)
 
     # Draw random points from the biggest box that encompasses the sky posterior
-    random_draws = np.random.uniform(size=(2,KDE_eval_points))*np.array([[np.max(posterior_samples[:,0])-np.min(posterior_samples[:,0])],
-                                            [np.max(posterior_samples[:,1])-np.min(posterior_samples[:,1])]]) + np.array([[np.min(posterior_samples[:,0])],
-                                                                                                                    [np.min(posterior_samples[:,1])]])
-
+    lower_left_box_corner = np.array([[np.min(posterior_samples[:,0])], [np.min(posterior_samples[:,1])]])
+    #lower_left_box_corner = np.min(posterior_samples, axis=0)
+    box_dimensions = np.array([[np.max(posterior_samples[:,0])-np.min(posterior_samples[:,0])],
+                               [np.max(posterior_samples[:,1])-np.min(posterior_samples[:,1])]])
+    #box_dimensions = np.ptp(posterior_samples, axis=0)
+    random_draws = np.random.uniform(size=(2,KDE_eval_points)) * box_dimensions + lower_left_box_corner
+    #random_draws = np.random.uniform(size=(2,KDE_eval_points)) * box_dimensions[:,np.newaxis] + lower_left_box_corner[:,np.newaxis]
+    
     # Area of this box
-    total_area_of_box =  np.ptp(posterior_samples[:,0])*np.ptp(posterior_samples[:,1])
+    total_area_of_box = box_dimensions[0,0] * box_dimensions[1,1]
+    #total_area_of_box = np.ptp(posterior_samples[:,0])*np.ptp(posterior_samples[:,1])
 
     # Evaluate the KDE at these points 
     p = sky_KDE.pdf(random_draws)
 
     # Evaluate the contour that each point sits on, using a monte-carlo estimate 
-    contour = []
-    for prob in p: 
-        contour.append(1/p.size*np.sum(p>prob))
-    
-    contour = np.array(contour)
+    contour = np.zeros(KDE_eval_points)
+    for i, prob in enumerate(p): 
+        contour[i] = np.sum(p>prob) / KDE_eval_points
     
     # What fraction of the total area is within the quantile
-    sky_area =1/contour.size*(np.sum(contour>q))*total_area_of_box
+    sky_area = total_area_of_box * np.sum(contour<q) / KDE_eval_points  
 
     return(sky_area)
 
