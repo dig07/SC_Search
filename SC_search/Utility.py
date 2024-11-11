@@ -324,17 +324,15 @@ def compute_monte_carlo_estimate_of_sky_area(posterior_samples, KDE_downsampling
     sky_KDE = stats.gaussian_kde(posterior_samples[::KDE_downsampling].T)
 
     # Draw random points from the biggest box that encompasses the sky posterior
-    lower_left_box_corner = np.array([[np.min(posterior_samples[:,0])], [np.min(posterior_samples[:,1])]])
-    #lower_left_box_corner = np.min(posterior_samples, axis=0)
-    box_dimensions = np.array([[np.max(posterior_samples[:,0])-np.min(posterior_samples[:,0])],
-                               [np.max(posterior_samples[:,1])-np.min(posterior_samples[:,1])]])
-    #box_dimensions = np.ptp(posterior_samples, axis=0)
+
+    lower_left_box_corner = np.min(posterior_samples, axis=0).reshape((2,1))
+
+    box_dimensions = np.ptp(posterior_samples, axis=0).reshape((2,1))
+
     random_draws = np.random.uniform(size=(2,KDE_eval_points)) * box_dimensions + lower_left_box_corner
-    #random_draws = np.random.uniform(size=(2,KDE_eval_points)) * box_dimensions[:,np.newaxis] + lower_left_box_corner[:,np.newaxis]
-    
+
     # Area of this box
-    total_area_of_box = box_dimensions[0,0] * box_dimensions[1,1]
-    #total_area_of_box = np.ptp(posterior_samples[:,0])*np.ptp(posterior_samples[:,1])
+    total_area_of_box = box_dimensions[0,0] * box_dimensions[1,0]
 
     # Evaluate the KDE at these points 
     p = sky_KDE.pdf(random_draws)
