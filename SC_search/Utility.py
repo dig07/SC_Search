@@ -368,7 +368,8 @@ def corner_mine(posteriors,
                 axes_adjust = False,
                 special_1d_param_index = None,
                 special_1d_hist_param_bins = [],
-                line_width = 1.):
+                line_width = 1.,
+                legend_fontsize=20):
     ''' 
     Custom corner plot implementation 
     
@@ -429,6 +430,9 @@ def corner_mine(posteriors,
         
         line_width: float (Defaults to 1.)
             Thickness of the lines in the plot
+
+        legend_fontsize: int (Defaults to 20)
+            Fontsize of the legend
     
     '''
     # Set up the figure and gridspec
@@ -449,10 +453,10 @@ def corner_mine(posteriors,
     ax_offdiag = [[fig.add_subplot(gs[i, j]) for j in range(i)] for i in range(1, ndim)]
     
     # Make inset axes if requested
-    if inset != []:  
+    if inset != []:
         a,b = inset
-        ax_inset = fig.add_subplot(gs[a,b])    
- 
+        ax_inset = fig.add_subplot(gs[a,b])   
+
     # Plot the diagonal histograms
     
     for posterior_index,data in enumerate(posteriors):
@@ -523,9 +527,8 @@ def corner_mine(posteriors,
 
                 legend_elements.append( Line2D([0], [0], color=colors[posterior_index], 
                                                label=legend[posterior_index]))
-
         plt.legend(handles=legend_elements,bbox_to_anchor=(0.9, 0.9),
-          bbox_transform=fig.transFigure,prop={'size': 20})
+          bbox_transform=fig.transFigure,prop={'size': legend_fontsize})
 
     global_axis_array = np.zeros((ndim,ndim), dtype=object)    
     
