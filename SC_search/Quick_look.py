@@ -130,7 +130,7 @@ class Q_look:
         # If frequencies are already generated and stored in a file, load them in
         if 'pregenerated_frequencies' in self.frequency_series_dict:
             if self.frequency_series_dict['pregenerated_frequencies'] == True:
-                freqs = cp.asarray(np.load('freqs.npy'))
+                freqs = cp.asarray(np.load('freqs_filtered.npy'))
                 df = cp.diff(freqs)[1]
 
             else:
