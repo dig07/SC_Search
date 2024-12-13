@@ -66,7 +66,7 @@ class Q_look:
 
         self.num_points_per_tile = num_points_per_tile
 
-        self.generate_search_tiles(mc_tiles_number,f_low_tiles_number,tiling_scheme)
+        self.generate_search_tiles(mc_tiles_number,f_low_tiles_number)
 
         self.segment = segment 
 
