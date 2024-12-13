@@ -257,7 +257,7 @@ class Q_look:
             mc_prior = tile[1]
 
             # Generate the frequency grids for the tile
-            freqs,df,freqs_on_CPU,freqs_sparse,freqs_sparse_on_CPU,fmax,frequency_mask = self.generate_frequency_grids(f_low_prior,mc_prior)
+            freqs,df,freqs_on_CPU,freqs_sparse,freqs_sparse_on_CPU,fmax,frequency_mask = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
 
             # Generate the PSD for the tile
             psd_array = self.generate_PSD(freqs,LDC=self.LDC_PSD,LDC_PSD_TDI_version=self.LDC_PSD_TDI_version)
