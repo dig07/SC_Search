@@ -3,8 +3,11 @@ try:
 except ImportError:
     print('Cupy not installed, search (on full FFT grid) wont work')
 
+try: 
+    from ldc.lisa.noise import get_noise_model
+except ImportError:
+    print('LDC not installed')
 
-import numpy as np
 import matplotlib.pyplot as plt
 import os
 import scipy.stats as stats
@@ -16,7 +19,7 @@ from .Semi_Coherent_Functions import upsilon_func, semi_coherent_match, coherent
 from .Noise import *
 from .Waveforms import TaylorF2Ecc, TaylorF2EccSpin
 from .Waveforms import Constants as const
-
+import numpy as np 
 
 class Q_look:
     '''
@@ -59,7 +62,7 @@ class Q_look:
         self.frequency_series_dict = frequency_series_dict
 
         self.prior_mc = search_prior_mc_f_low[0]
-
+        
         self.prior_f_low = search_prior_mc_f_low[1]
 
         self.other_priors = search_priors_in_other_parameters
@@ -99,7 +102,7 @@ class Q_look:
         mc_points = np.linspace(self.prior_mc[0],self.prior_mc[1],mc_tiles_number,endpoint=True)
 
         # Boundary points for each tile in lower frequency
-        f_low_points = f_low_points =np.logspace(np.log10(self.prior_f_low[0]),np.log10(self.prior_f_low[1]),num=f_low_tiles_number)
+        f_low_points = np.logspace(np.log10(self.prior_f_low[0]),np.log10(self.prior_f_low[1]),num=f_low_tiles_number)
 
         mc_segments = [[mc_points[i],mc_points[i+1]] for i in range(mc_points.size-1)]
 
@@ -113,6 +116,9 @@ class Q_look:
                 self.global_search_tiles.append([f_low_segment,mc_segment])
 
         print('Number of search tiles: ',len(self.global_search_tiles))
+
+        self.global_search_tiles=np.array(self.global_search_tiles)
+
 
     def generate_frequency_grids(self,f_min,mc_prior,f_low_prior):
         '''
@@ -144,8 +150,8 @@ class Q_look:
         if 'compute_f_max_for_tile' in self.frequency_series_dict:
             if self.frequency_series_dict['compute_f_max_for_tile'] == True:
 
-                eta_prior = self.other_priors[1]#
-                e0_prior = self.other_priors[7]#
+                eta_prior = self.other_priors[0]#
+                e0_prior = self.other_priors[6]#
 
                 search_tile_prior = np.array([mc_prior,
                                               eta_prior,
@@ -167,7 +173,7 @@ class Q_look:
         # If not just use the whole frequency grid
         freqs_on_CPU = freqs.get() # On CPU
 
-        freqs_sparse = freqs[::self.downsampling_factor]  # On GPU
+        freqs_sparse = freqs[::50]  # On GPU
         print('Sparse frequency grid size:',freqs_sparse.size)
 
         freqs_sparse_on_CPU = freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
@@ -237,7 +243,7 @@ class Q_look:
             initial_positions
 
         '''
-        num_dimensions = prior.shape[0] 
+        num_dimensions = priors.shape[0] 
 
         # Generate samples from the prior   
         initial_sampler = stats.qmc.LatinHypercube(num_dimensions,strength=1)
@@ -278,7 +284,7 @@ class Q_look:
             priors = np.insert(priors,7,f_low_prior/2,axis=0)# GW->Orbital frequency since thats what the waveforms take
 
             # Generate the initial positions for the tile # TODO FILL IN PRIORS
-            initial_positions = self.generate_initial_positions(prior,self.num_points_per_tile)
+            initial_positions = self.generate_initial_positions(priors,self.num_points_per_tile)
 
             upsilons = []
 
