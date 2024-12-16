@@ -130,8 +130,10 @@ class Q_look:
         fmax = self.frequency_series_dict['fmax']
         self.T_obs = self.frequency_series_dict['T_obs']
 
-        # Downsampling factor is used for the sparse frequency grid for interpolation
-        self.downsampling_factor = self.frequency_series_dict['downsampling_factor']
+
+        # Target this number of frequency points, downsample appropriately to get to (roughly) this number
+        self.target_number_of_frequency_points = self.frequency_series_dict['target_number_of_frequency_points']
+
         
         # If frequencies are already generated and stored in a file, load them in
         if 'pregenerated_frequencies' in self.frequency_series_dict:
@@ -173,7 +175,13 @@ class Q_look:
         # If not just use the whole frequency grid
         freqs_on_CPU = freqs.get() # On CPU
 
-        freqs_sparse = freqs[::50]  # On GPU
+        # Target a speciic number of frequncy
+        downsampling_factor = freqs.size//self.target_number_of_frequency_points
+
+        freqs_sparse = freqs[::downsampling_factor]  # On GPU
+
+        print('Dense frequency grid size: ',freqs.size)
+
         print('Sparse frequency grid size:',freqs_sparse.size)
 
         freqs_sparse_on_CPU = freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
@@ -247,7 +255,7 @@ class Q_look:
 
         # Generate samples from the prior   
         initial_sampler = stats.qmc.LatinHypercube(num_dimensions,strength=1)
-        initial_positions = initial_sampler.random(n=nsamples)*(np.ptp(priors,axis=1)) + np.array(priors)[:,0]
+        initial_positions = initial_sampler.random(n=num_points)*(np.ptp(priors,axis=1)) + np.array(priors)[:,0]
 
         return(initial_positions)
 
@@ -301,7 +309,7 @@ class Q_look:
                 source_params = source_parameters_transformed[source_index]
             
                 # Generate noiseless signal
-                signal= self.waveform_func(source_parameters_transformed,**injection_waveform_args)
+                signal= self.waveform_func(source_params,**waveform_args)
 
                 upsilons.append(upsilon_func(signal,self.data[frequency_mask],psd_array,df,num_segments=self.segment))
 
