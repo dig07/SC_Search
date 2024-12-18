@@ -39,7 +39,8 @@ class Q_look:
                 tiling_scheme='Log',
                 mc_tiles_number = 20,
                 f_low_tiles_number = 20,
-                response_TDI_version=1):
+                response_TDI_version=1,
+                constant_distance=100.e+6):
         '''
         Initialises new instance of quick look class. 
 
@@ -57,6 +58,9 @@ class Q_look:
             tiling_scheme (str, optional): The tiling scheme to use for the search in f_low. [Defaults to 'Log']
             mc_tiles_number (int,optional): The number of tiles to use in the chirp mass direction. [Defaults to 20]
             f_low_tiles_number (int,optional): The number of tiles to use in the lower frequency direction. [Defaults to 20]
+            response_TDI_version (int, optional): The TDI version to use in the response. [Defaults to 1]
+            constant_distance (float, optional): The constant distance to use in the search. [Defaults to 100e+6]
+                (Note this is used just to avoid numerical errors, the distance terms drops out of the waveform in the search statistic)
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -72,6 +76,8 @@ class Q_look:
         self.generate_search_tiles(mc_tiles_number,f_low_tiles_number)
 
         self.segment = segment 
+
+        self.constant_distance = constant_distance
 
         self.data_file_name = data_file_name
 
@@ -142,7 +148,7 @@ class Q_look:
                 df = cp.diff(freqs)[1]
 
             else:
-                df = 1/T_obs
+                df = 1/self.T_obs
                 freqs = cp.arange(fmin,fmax,df) # On GPU
         else:
                 df = 1/self.T_obs
@@ -153,7 +159,7 @@ class Q_look:
             if self.frequency_series_dict['compute_f_max_for_tile'] == True:
 
                 eta_prior = self.other_priors[0]#
-                e0_prior = self.other_priors[6]#
+                e0_prior = self.other_priors[5]#
 
                 search_tile_prior = np.array([mc_prior,
                                               eta_prior,
@@ -177,8 +183,6 @@ class Q_look:
 
         # Target a speciic number of frequncy
         downsampling_factor = freqs.size//self.target_number_of_frequency_points
-
-        print('Dense frequency grid size: ',freqs.size)
 
         freqs_sparse = freqs[::downsampling_factor]  # On GPU
 
@@ -304,6 +308,9 @@ class Q_look:
                 
                 source_params = list(source_params)
 
+                # Add in distance fixed so we can generate the waveform
+                source_params.insert(2,self.constant_distance)
+
                 # Add in orbital phase fixed so we can generate the waveform
                 source_params.insert(7,constant_initial_phase)
 
@@ -313,8 +320,10 @@ class Q_look:
                 # Generate noiseless signal
                 signal= self.waveform_func(source_parameters_transformed,**waveform_args)
 
-                upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
+                if cp.sum(signal)!= 0j:
+                    upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
+                else:
+                    upsilons.append(0)
 
-            print(source_parameters_transformed)
 
             print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
