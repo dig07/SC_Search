@@ -270,6 +270,7 @@ class Q_look:
 
         self.data = cp.asarray(np.load(self.data_file_name))
 
+        self.max_upsilons = []
     
         for tile in self.global_search_tiles:
 
@@ -323,3 +324,20 @@ class Q_look:
                 upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
 
             print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
+
+            self.max_upsilons.append(max(upsilons))
+
+        self.save_results()
+
+    def save_results(self):
+        '''
+        Output results of quick look to a file
+        '''
+
+        tiles = np.array(self.global_search_tiles).reshape(len(self.global_search_tiles),4)
+
+        upsilons_results = np.array(self.max_upsilons)
+
+        results = np.hstack((tiles,upsilons_results))
+
+        np.save('quick_look_results.txt',results)
