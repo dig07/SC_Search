@@ -295,7 +295,7 @@ class Q_look:
 
             priors = np.insert(priors,0,mc_prior,axis=0)
             
-            priors = np.insert(priors,7,f_low_prior/2,axis=0)# GW->Orbital frequency since thats what the waveforms take
+            priors = np.insert(priors,6,f_low_prior/2,axis=0)# GW->Orbital frequency since thats what the waveforms take
 
             # Generate the initial positions for the tile # TODO FILL IN PRIORS
             initial_positions = self.generate_initial_positions(priors,self.num_points_per_tile)
@@ -320,10 +320,6 @@ class Q_look:
                 # Generate noiseless signal
                 signal= self.waveform_func(source_parameters_transformed,**waveform_args)
 
-                if cp.sum(signal)!= 0j:
-                    upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
-                else:
-                    upsilons.append(0)
-
+                upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
 
             print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
