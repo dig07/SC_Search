@@ -138,7 +138,7 @@ class Q_look:
         # If frequencies are already generated and stored in a file, load them in
         if 'pregenerated_frequencies' in self.frequency_series_dict:
             if self.frequency_series_dict['pregenerated_frequencies'] == True:
-                freqs = cp.asarray(np.load('freqs_filtered.npy'))
+                freqs = cp.asarray(np.load('freqs.npy'))
                 df = cp.diff(freqs)[1]
 
             else:
@@ -164,7 +164,7 @@ class Q_look:
                                                    self.T_obs,
                                                    f_psd_high=fmax, # set default value for f_high in case we are merging within observation time to be whatever the user sets
                                                    safety_factor=1.1)
-                print('f_max for search for this tile:',fmax)
+                print('fmin,f_max for search for this tile:',fmin,fmax)
 
                 # Frequency mask to cut off the frequency grid at the maximum frequency for integration
                 # Used below and when importing data. 
@@ -177,6 +177,8 @@ class Q_look:
 
         # Target a speciic number of frequncy
         downsampling_factor = freqs.size//self.target_number_of_frequency_points
+
+        print('Dense frequency grid size: ',freqs.size)
 
         freqs_sparse = freqs[::downsampling_factor]  # On GPU
 
@@ -299,18 +301,20 @@ class Q_look:
             for source_index in range(self.num_points_per_tile):
 
                 source_params = initial_positions[source_index].copy()
+                
+                source_params = list(source_params)
 
                 # Add in orbital phase fixed so we can generate the waveform
                 source_params.insert(7,constant_initial_phase)
 
                 # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
-                source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(initial_positions[source_index].copy())
+                source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source_params.copy())
 
-                source_params = source_parameters_transformed[source_index]
-            
                 # Generate noiseless signal
-                signal= self.waveform_func(source_params,**waveform_args)
+                signal= self.waveform_func(source_parameters_transformed,**waveform_args)
 
-                upsilons.append(upsilon_func(signal,self.data[frequency_mask],psd_array,df,num_segments=self.segment))
+                upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
+
+            print(source_parameters_transformed)
 
             print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
