@@ -340,8 +340,8 @@ class Q_look:
 
         tiles = np.array(self.global_search_tiles).reshape(len(self.global_search_tiles),4)
 
-        upsilons_results = np.array(self.max_upsilons)
+        upsilons_results = np.array(self.max_upsilons).reshape(len(self.max_upsilons),1)
 
         results = np.hstack((tiles,upsilons_results))
 
-        np.save('quick_look_results.txt',results)
+        np.savetxt('quick_look_results.txt',results)
