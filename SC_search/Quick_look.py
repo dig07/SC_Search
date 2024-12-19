@@ -173,7 +173,7 @@ class Q_look:
                 print('fmin,f_max for search for this tile:',fmin,fmax)
 
                 # Frequency mask to cut off the frequency grid at the maximum frequency for integration
-                # Used below and when importing data. 
+                # Used below and when importif_high_tile_computeng data. 
                 frequency_mask = ((freqs<=fmax) & (freqs>=fmin))
 
                 freqs = freqs[frequency_mask].copy() # On GPU
@@ -277,55 +277,59 @@ class Q_look:
             f_low_prior = tile[0]
             mc_prior = tile[1]
 
-            # Generate the frequency grids for the tile
-            freqs,df,freqs_on_CPU,freqs_sparse,freqs_sparse_on_CPU,fmax,frequency_mask = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
+            try:
+                # Generate the frequency grids for the tile
+                freqs,df,freqs_on_CPU,freqs_sparse,freqs_sparse_on_CPU,fmax,frequency_mask = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
 
-            # Generate the PSD for the tile
-            psd_array = self.generate_PSD(freqs,LDC=self.LDC_PSD,LDC_PSD_TDI_version=self.LDC_PSD_TDI_version)
+                # Generate the PSD for the tile
+                psd_array = self.generate_PSD(freqs,LDC=self.LDC_PSD,LDC_PSD_TDI_version=self.LDC_PSD_TDI_version)
 
-            waveform_args = {'freqs_sparse':freqs_sparse,
-                                    'freqs_dense':freqs,
-                                    'freqs_sparse_on_CPU':freqs_sparse_on_CPU,
-                                    'f_high':fmax,
-                                    'T_obs':self.T_obs,
-                                    'TDIType':'AET',
-                                    'logging': False,
-                                    'TDIversion':self.response_TDI_version}
-            # Generate the priors for this search tile
-            priors = self.other_priors.copy()
+                waveform_args = {'freqs_sparse':freqs_sparse,
+                                        'freqs_dense':freqs,
+                                        'freqs_sparse_on_CPU':freqs_sparse_on_CPU,
+                                        'f_high':fmax,
+                                        'T_obs':self.T_obs,
+                                        'TDIType':'AET',
+                                        'logging': False,
+                                        'TDIversion':self.response_TDI_version}
+                # Generate the priors for this search tile
+                priors = self.other_priors.copy()
 
-            priors = np.insert(priors,0,mc_prior,axis=0)
-            
-            priors = np.insert(priors,6,f_low_prior/2,axis=0)# GW->Orbital frequency since thats what the waveforms take
-
-            # Generate the initial positions for the tile # TODO FILL IN PRIORS
-            initial_positions = self.generate_initial_positions(priors,self.num_points_per_tile)
-
-            upsilons = []
-
-            for source_index in range(self.num_points_per_tile):
-
-                source_params = initial_positions[source_index].copy()
+                priors = np.insert(priors,0,mc_prior,axis=0)
                 
-                source_params = list(source_params)
+                priors = np.insert(priors,6,f_low_prior/2,axis=0)# GW->Orbital frequency since thats what the waveforms take
 
-                # Add in distance fixed so we can generate the waveform
-                source_params.insert(2,self.constant_distance)
+                # Generate the initial positions for the tile # TODO FILL IN PRIORS
+                initial_positions = self.generate_initial_positions(priors,self.num_points_per_tile)
 
-                # Add in orbital phase fixed so we can generate the waveform
-                source_params.insert(7,constant_initial_phase)
+                upsilons = []
 
-                # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
-                source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source_params.copy())
+                for source_index in range(self.num_points_per_tile):
 
-                # Generate noiseless signal
-                signal= self.waveform_func(source_parameters_transformed,**waveform_args)
+                    source_params = initial_positions[source_index].copy()
+                    
+                    source_params = list(source_params)
 
-                upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
+                    # Add in distance fixed so we can generate the waveform
+                    source_params.insert(2,self.constant_distance)
 
-            print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
+                    # Add in orbital phase fixed so we can generate the waveform
+                    source_params.insert(7,constant_initial_phase)
 
-            self.max_upsilons.append(max(upsilons))
+                    # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
+                    source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source_params.copy())
+
+                    # Generate noiseless signal
+                    signal= self.waveform_func(source_parameters_transformed,**waveform_args)
+
+                    upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
+
+                print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
+
+                self.max_upsilons.append(max(upsilons))
+            except:
+                # -1 is for us an error code that we can remove in postprocessing and we can try and figure out if there is something wrong with a tile
+                self.max_upsilons.append(-1)
 
         self.save_results()
 
