@@ -325,11 +325,13 @@ class Q_look:
                     upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
 
                 print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
+                print('Maximum upsilon point: ',initial_positions[np.argmax(upsilons)])
 
                 self.max_upsilons.append(max(upsilons))
-            except:
+            except Exception as e:
                 # -1 is for us an error code that we can remove in postprocessing and we can try and figure out if there is something wrong with a tile
                 self.max_upsilons.append(-1)
+                print(e)
 
         self.save_results()
 
