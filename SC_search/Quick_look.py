@@ -135,64 +135,28 @@ class Q_look:
         fmin = f_min
         fmax = self.frequency_series_dict['fmax']
         self.T_obs = self.frequency_series_dict['T_obs']
-
-
-        # Target this number of frequency points, downsample appropriately to get to (roughly) this number
-        self.target_number_of_frequency_points = self.frequency_series_dict['target_number_of_frequency_points']
-
         
-        # If frequencies are already generated and stored in a file, load them in
-        if 'pregenerated_frequencies' in self.frequency_series_dict:
-            if self.frequency_series_dict['pregenerated_frequencies'] == True:
-                freqs = cp.asarray(np.load('freqs.npy'))
-                df = cp.diff(freqs)[1]
+        eta_prior = self.other_priors[0]#
+        e0_prior = self.other_priors[5]#
 
-            else:
-                df = 1/self.T_obs
-                freqs = cp.arange(fmin,fmax,df) # On GPU
-        else:
-                df = 1/self.T_obs
-                freqs = cp.arange(fmin,fmax,df) # On GPU
+        search_tile_prior = np.array([mc_prior,
+                                        eta_prior,
+                                        f_low_prior,
+                                        e0_prior])
+        # Maximum frequency of integration for whole search 
+        fmax = TaylorF2Ecc.f_high_tile_compute(search_tile_prior,
+                                            self.T_obs,
+                                            f_psd_high=fmax, # set default value for f_high in case we are merging within observation time to be whatever the user sets
+                                            safety_factor=1.1)
 
-        # Option to compute the maximum frequency for integration based on the search tile. 
-        if 'compute_f_max_for_tile' in self.frequency_series_dict:
-            if self.frequency_series_dict['compute_f_max_for_tile'] == True:
 
-                eta_prior = self.other_priors[0]#
-                e0_prior = self.other_priors[5]#
+        frequency_mask = ((self.freqs<=fmax) & (self.freqs>=fmin))
 
-                search_tile_prior = np.array([mc_prior,
-                                              eta_prior,
-                                              f_low_prior,
-                                              e0_prior])
-                # Maximum frequency of integration for whole search 
-                fmax = TaylorF2Ecc.f_high_tile_compute(search_tile_prior,
-                                                   self.T_obs,
-                                                   f_psd_high=fmax, # set default value for f_high in case we are merging within observation time to be whatever the user sets
-                                                   safety_factor=1.1)
-                print('fmin,f_max for search for this tile:',fmin,fmax)
+        # Downsampling to target number of frequency points
+        downsampling_factor = self.freqs.size//self.frequency_series_dict['target_number_of_frequency_points']
 
-                # Frequency mask to cut off the frequency grid at the maximum frequency for integration
-                # Used below and when importif_high_tile_computeng data. 
-                frequency_mask = ((freqs<=fmax) & (freqs>=fmin))
 
-                freqs = freqs[frequency_mask].copy() # On GPU
-
-        # If not just use the whole frequency grid
-        freqs_on_CPU = freqs.get() # On CPU
-
-        # Target a speciic number of frequncy
-        downsampling_factor = freqs.size//self.target_number_of_frequency_points
-
-        freqs_sparse = freqs[::downsampling_factor]  # On GPU
-
-        print('Dense frequency grid size: ',freqs.size)
-
-        print('Sparse frequency grid size:',freqs_sparse.size)
-
-        freqs_sparse_on_CPU = freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
-
-        return(freqs,df,freqs_on_CPU,freqs_sparse,freqs_sparse_on_CPU,fmax,frequency_mask)
+        return(frequency_mask,downsampling_factor,fmax)
 
     def generate_PSD(self,freqs,LDC=False,confusion=False,LDC_PSD_TDI_version=1):
         '''
@@ -267,6 +231,13 @@ class Q_look:
 
     def run_quick_look(self,constant_initial_phase=0):
 
+        self.freqs = cp.asarray(np.load('freqs.npy'))
+        
+        df = self.freqs[1]-self.freqs[0]
+
+        self.freqs_on_CPU = self.freqs.get()
+        
+        self.psd_array = self.generate_PSD(self.freqs,LDC=self.LDC_PSD,LDC_PSD_TDI_version=self.LDC_PSD_TDI_version)        
 
         self.data = cp.asarray(np.load(self.data_file_name))
 
@@ -279,14 +250,11 @@ class Q_look:
 
             try:
                 # Generate the frequency grids for the tile
-                freqs,df,freqs_on_CPU,freqs_sparse,freqs_sparse_on_CPU,fmax,frequency_mask = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
+                frequency_mask,downsampling_factor,fmax = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
 
-                # Generate the PSD for the tile
-                psd_array = self.generate_PSD(freqs,LDC=self.LDC_PSD,LDC_PSD_TDI_version=self.LDC_PSD_TDI_version)
-
-                waveform_args = {'freqs_sparse':freqs_sparse,
-                                        'freqs_dense':freqs,
-                                        'freqs_sparse_on_CPU':freqs_sparse_on_CPU,
+                waveform_args = {'freqs_sparse':self.freqs[frequency_mask][::downsampling_factor],
+                                        'freqs_dense':self.freqs[frequency_mask],
+                                        'freqs_sparse_on_CPU':self.freqs_on_CPU[frequency_mask][::downsampling_factor],
                                         'f_high':fmax,
                                         'T_obs':self.T_obs,
                                         'TDIType':'AET',
@@ -322,7 +290,7 @@ class Q_look:
                     # Generate noiseless signal
                     signal= self.waveform_func(source_parameters_transformed,**waveform_args)
 
-                    upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],psd_array,df,num_segments=self.segment))
+                    upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],self.psd_array[:,frequency_mask],df,num_segments=self.segment))
 
                 print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
                 print('Maximum upsilon point: ',initial_positions[np.argmax(upsilons)])
