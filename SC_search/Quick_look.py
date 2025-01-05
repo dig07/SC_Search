@@ -248,13 +248,61 @@ class Q_look:
             f_low_prior = tile[0]
             mc_prior = tile[1]
 
+            # Generate the frequency grids for the tile
+            frequency_mask,downsampling_factor,fmax = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
+
+            waveform_args = {'freqs_sparse':self.freqs[frequency_mask][::downsampling_factor],
+                                    'freqs_dense':self.freqs[frequency_mask],
+                                    'freqs_sparse_on_CPU':self.freqs_on_CPU[frequency_mask.get()][::downsampling_factor],
+                                    'f_high':fmax,
+                                    'T_obs':self.T_obs,
+                                    'TDIType':'AET',
+                                    'logging': False,
+                                    'TDIversion':self.response_TDI_version}
+            # Generate the priors for this search tile
+            priors = self.other_priors.copy()
+
+            priors = np.insert(priors,0,mc_prior,axis=0)
+
+            priors = np.insert(priors,6,f_low_prior/2,axis=0)# GW->Orbital frequency since thats what the waveforms take
+
+            # Generate the initial positions for the tile # TODO FILL IN PRIORS
+            initial_positions = self.generate_initial_positions(priors,self.num_points_per_tile)
+
+            upsilons = []
+
+            for source_index in range(self.num_points_per_tile):
+
+                source_params = initial_positions[source_index].copy()
+                
+                source_params = list(source_params)
+
+                # Add in distance fixed so we can generate the waveform
+                source_params.insert(2,self.constant_distance)
+
+                # Add in orbital phase fixed so we can generate the waveform
+                source_params.insert(7,constant_initial_phase)
+
+                # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
+                source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source_params.copy())
+
+                # Generate noiseless signal
+                signal= self.waveform_func(source_parameters_transformed,**waveform_args)
+
+                upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],self.psd_array[:,frequency_mask],df,num_segments=self.segment))
+
+            print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
+            print('Maximum upsilon point: ',initial_positions[np.argmax(upsilons)])
+
+
+
             try:
                 # Generate the frequency grids for the tile
                 frequency_mask,downsampling_factor,fmax = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
 
                 waveform_args = {'freqs_sparse':self.freqs[frequency_mask][::downsampling_factor],
                                         'freqs_dense':self.freqs[frequency_mask],
-                                        'freqs_sparse_on_CPU':self.freqs_on_CPU[frequency_mask][::downsampling_factor],
+                                        'freqs_sparse_on_CPU':self.freqs_on_CPU[frequency_mask.get()][::downsampling_factor],
                                         'f_high':fmax,
                                         'T_obs':self.T_obs,
                                         'TDIType':'AET',
