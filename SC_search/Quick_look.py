@@ -155,6 +155,8 @@ class Q_look:
         # Downsampling to target number of frequency points
         downsampling_factor = self.freqs.size//self.frequency_series_dict['target_number_of_frequency_points']
 
+        print('f_gw min (set by tile): ',fmin)
+        print('f_gw max (for integration): ',fmax)
 
         return(frequency_mask,downsampling_factor,fmax)
 
