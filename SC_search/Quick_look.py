@@ -8,6 +8,15 @@ try:
 except ImportError:
     print('LDC not installed')
 
+# Try importing torch multiprocessing, if it fails, use the default multiprocessing
+try: 
+    from torch.multiprocessing import Pool, set_start_method
+    set_start_method('spawn',force=True)
+    parallel=True
+else: 
+    print('Torch multiprocessing not installed, no parallelisation')
+    parallel = False
+
 import matplotlib.pyplot as plt
 import os
 import scipy.stats as stats
@@ -40,7 +49,8 @@ class Q_look:
                 mc_tiles_number = 20,
                 f_low_tiles_number = 20,
                 response_TDI_version=1,
-                constant_distance=100.e+6):
+                constant_distance=100.e+6,
+                Nthreads=1):
         '''
         Initialises new instance of quick look class. 
 
@@ -61,6 +71,8 @@ class Q_look:
             response_TDI_version (int, optional): The TDI version to use in the response. [Defaults to 1]
             constant_distance (float, optional): The constant distance to use in the search. [Defaults to 100e+6]
                 (Note this is used just to avoid numerical errors, the distance terms drops out of the waveform in the search statistic)
+            Nthreads (int, optional): The number of parallel to use in the search. [Defaults to 1] 
+                (Note this is only used if torch.multiprocessing is available, i.e. we can parallelise over the GPU)
         '''
 
         self.frequency_series_dict = frequency_series_dict
@@ -235,7 +247,7 @@ class Q_look:
 
         self.freqs = cp.asarray(np.load('freqs.npy'))
         
-        df = self.freqs[1]-self.freqs[0]
+        self.df = self.freqs[1]-self.freqs[0]
 
         self.freqs_on_CPU = self.freqs.get()
         
@@ -252,11 +264,11 @@ class Q_look:
 
             try:
                 # Generate the frequency grids for the tile
-                frequency_mask,downsampling_factor,fmax = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
+                self.frequency_mask,downsampling_factor,fmax = self.generate_frequency_grids(f_low_prior[0],mc_prior,f_low_prior)
 
-                waveform_args = {'freqs_sparse':self.freqs[frequency_mask][::downsampling_factor],
-                                        'freqs_dense':self.freqs[frequency_mask],
-                                        'freqs_sparse_on_CPU':self.freqs_on_CPU[frequency_mask.get()][::downsampling_factor],
+                self.waveform_args = {'freqs_sparse':self.freqs[self.frequency_mask][::downsampling_factor],
+                                        'freqs_dense':self.freqs[self.frequency_mask],
+                                        'freqs_sparse_on_CPU':self.freqs_on_CPU[self.frequency_mask.get()][::downsampling_factor],
                                         'f_high':fmax,
                                         'T_obs':self.T_obs,
                                         'TDIType':'AET',
@@ -272,7 +284,7 @@ class Q_look:
                 # Generate the initial positions for the tile # TODO FILL IN PRIORS
                 initial_positions = self.generate_initial_positions(priors,self.num_points_per_tile)
 
-                upsilons = []
+                transformed_waveform_parameters = []
 
                 for source_index in range(self.num_points_per_tile):
 
@@ -289,11 +301,21 @@ class Q_look:
                     # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
                     source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(source_params.copy())
 
-                    # Generate noiseless signal
-                    signal= self.waveform_func(source_parameters_transformed,**waveform_args)
+                    transformed_waveform_parameters.append(source_parameters_transformed)
 
-                    upsilons.append(upsilon_func(signal,self.data[:,frequency_mask],self.psd_array[:,frequency_mask],df,num_segments=self.segment))
+                # If parallel try and run multiple computations across the GPU at once 
+                if parallel == True:
 
+                    # Create multiprocessing pool
+                    self.Pool = Pool(self.Nthreads)
+                    
+                    # Compute waveforms and upsilons over pool 
+                    upsilons = np.array( self.Pool.map(self.generate_waveform_and_compute_upsilon, transformed_waveform_parameters) )
+                
+                # If not parallelisable, just do it linearly. 
+                else:
+                    upsilons = map(self.generate_waveform_and_compute_upsilon,transformed_waveform_parameters)
+  
                 print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
                 print('Maximum upsilon point: ',initial_positions[np.argmax(upsilons)])
 
@@ -304,6 +326,27 @@ class Q_look:
                 print(e)
 
         self.save_results()
+
+    def generate_waveform_and_compute_upsilon(self,source_params):
+        '''
+        Generate a waveform and compute the upsilon value for that waveform.
+        Wrapped into its own function to allow for parallelisation over GPU. 
+
+        Args:
+            source_params (array): The source parameters to generate the waveform for (transformed into their correct form).
+
+        Returns:
+            upsilon (float): The upsilon value for the waveform
+
+        '''
+
+        
+        signal= self.waveform_func(source_params,**self.waveform_args)
+
+        upsilon = upsilon_func(signal,self.data[:,self.frequency_mask],self.psd_array[:,self.frequency_mask],self.df,num_segments=self.segment)
+
+        return(upsilon)
+
 
     def save_results(self):
         '''
