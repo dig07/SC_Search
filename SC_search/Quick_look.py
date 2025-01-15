@@ -294,6 +294,10 @@ class Q_look:
 
                 transformed_waveform_parameters = []
 
+                # Working out the data and psd subset that will be used for this tile (basically just using the frequency range cleverly)
+                data_subset = self.data[:,self.frequency_mask]
+                psd_subset = self.psd_array[:,self.frequency_mask]
+
                 for source_index in range(self.num_points_per_tile):
 
                     source_params = initial_positions[source_index].copy()
@@ -317,14 +321,14 @@ class Q_look:
                     # Create multiprocessing pool
                     self.Pool = Pool(self.Nthreads)
                     print('before upsilons computation')
-                    upsilons = list(self.Pool.starmap(generate_waveform_and_compute_upsilon, zip(transformed_waveform_parameters,repeat((self.waveform_args,self.data[:,self.frequency_mask],
-                                                      self.psd_array[:,self.frequency_mask],self.df,self.segment)))))
+                    upsilons = list(self.Pool.starmap(generate_waveform_and_compute_upsilon, zip(transformed_waveform_parameters,repeat((self.waveform_args,data_subset,
+                                                      psd_subset,self.df,self.segment)))))
                     self.Pool.close()
                     self.Pool.join()
-                    print('bbbbbbbbbbbb')
                 # If not parallelisable, just do it linearly. 
                 else:
-                    upsilons = list(map(self.generate_waveform_and_compute_upsilon,transformed_waveform_parameters))
+                    upsilons = list(map(self.generate_waveform_and_compute_upsilon,zip(transformed_waveform_parameters,repeat((self.waveform_args,data_subset,
+                                                      psd_subset,self.df,self.segment)))))
   
                 print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
                 print('Maximum upsilon point: ',initial_positions[np.argmax(upsilons)])
@@ -353,19 +357,21 @@ class Q_look:
 
         np.savetxt('quick_look_results.txt',results)
 
-def generate_waveform_and_compute_upsilon(source_params,a):
+def generate_waveform_and_compute_upsilon(source_params,other_params):
     '''
     Generate a waveform and compute the upsilon value for that waveform.
     Wrapped into its own function to allow for parallelisation over GPU. 
 
     Args:
     source_params (array): The source parameters to generate the waveform for (transformed into their correct form).
+    other_params (list): A list containing the other parameters needed to generate the waveform and compute the upsilon value.
+                        This contains: waveform_args,data,psd_array,df,num_segments 
 
     Returns:
     upsilon (float): The upsilon value for the waveform
 
     '''
-    waveform_args,data,psd_array,df,num_segments= a
+    waveform_args,data,psd_array,df,num_segments= other_params
     signal= TaylorF2Ecc.BBHx_response_interpolate(source_params,**waveform_args)
 
     upsilon = upsilon_func(signal,data,psd_array,df,num_segments=num_segments)
