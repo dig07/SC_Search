@@ -265,8 +265,8 @@ class Q_look:
 
         self.max_upsilons = []
     
-        for tile in self.global_search_tiles:
-
+        for index,tile in enumerate(self.global_search_tiles):
+            print('Percentage done: ',round(index/len(self.global_search_tiles)*100,2))
             f_low_prior = tile[0]
             mc_prior = tile[1]
 
@@ -320,7 +320,6 @@ class Q_look:
 
                     # Create multiprocessing pool
                     self.Pool = Pool(self.Nthreads)
-                    print('before upsilons computation')
                     upsilons = list(self.Pool.starmap(generate_waveform_and_compute_upsilon, zip(transformed_waveform_parameters,repeat((self.waveform_args,data_subset,
                                                       psd_subset,self.df,self.segment)))))
                     self.Pool.close()
