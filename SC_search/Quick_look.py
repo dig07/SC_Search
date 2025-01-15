@@ -13,7 +13,7 @@ try:
     from torch.multiprocessing import Pool, set_start_method
     set_start_method('spawn',force=True)
     parallel=True
-else: 
+except ImportError: 
     print('Torch multiprocessing not installed, no parallelisation')
     parallel = False
 
@@ -22,13 +22,19 @@ import os
 import scipy.stats as stats
 
 
-from .Swarm_class import Semi_Coherent_Model
+#from .Swarm_class import Semi_Coherent_Model
 from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
 from .Semi_Coherent_Functions import upsilon_func, semi_coherent_match, coherent_match
 from .Noise import *
 from .Waveforms import TaylorF2Ecc, TaylorF2EccSpin
 from .Waveforms import Constants as const
 import numpy as np 
+
+import traceback
+from functools import partial
+from itertools import repeat
+
+
 
 class Q_look:
     '''
@@ -107,6 +113,8 @@ class Q_look:
         self.LDC_PSD_TDI_version = LDC_PSD_TDI_version
 
         self.response_TDI_version = response_TDI_version
+
+        self.Nthreads=Nthreads
 
     def generate_search_tiles(self,mc_tiles_number,f_low_tiles_number):
 
@@ -304,17 +312,19 @@ class Q_look:
                     transformed_waveform_parameters.append(source_parameters_transformed)
 
                 # If parallel try and run multiple computations across the GPU at once 
-                if parallel == True:
+                if parallel == True and self.Nthreads>1:
 
                     # Create multiprocessing pool
                     self.Pool = Pool(self.Nthreads)
-                    
-                    # Compute waveforms and upsilons over pool 
-                    upsilons = np.array( self.Pool.map(self.generate_waveform_and_compute_upsilon, transformed_waveform_parameters) )
-                
+                    print('before upsilons computation')
+                    upsilons = list(self.Pool.starmap(generate_waveform_and_compute_upsilon, zip(transformed_waveform_parameters,repeat((self.waveform_args,self.data[:,self.frequency_mask],
+                                                      self.psd_array[:,self.frequency_mask],self.df,self.segment)))))
+                    self.Pool.close()
+                    self.Pool.join()
+                    print('bbbbbbbbbbbb')
                 # If not parallelisable, just do it linearly. 
                 else:
-                    upsilons = map(self.generate_waveform_and_compute_upsilon,transformed_waveform_parameters)
+                    upsilons = list(map(self.generate_waveform_and_compute_upsilon,transformed_waveform_parameters))
   
                 print('Maximum upsilon from quick-look for this tile: ',max(upsilons))
                 print('Maximum upsilon point: ',initial_positions[np.argmax(upsilons)])
@@ -324,28 +334,10 @@ class Q_look:
                 # -1 is for us an error code that we can remove in postprocessing and we can try and figure out if there is something wrong with a tile
                 self.max_upsilons.append(-1)
                 print(e)
+                print(traceback.format_exc())
 
         self.save_results()
 
-    def generate_waveform_and_compute_upsilon(self,source_params):
-        '''
-        Generate a waveform and compute the upsilon value for that waveform.
-        Wrapped into its own function to allow for parallelisation over GPU. 
-
-        Args:
-            source_params (array): The source parameters to generate the waveform for (transformed into their correct form).
-
-        Returns:
-            upsilon (float): The upsilon value for the waveform
-
-        '''
-
-        
-        signal= self.waveform_func(source_params,**self.waveform_args)
-
-        upsilon = upsilon_func(signal,self.data[:,self.frequency_mask],self.psd_array[:,self.frequency_mask],self.df,num_segments=self.segment)
-
-        return(upsilon)
 
 
     def save_results(self):
@@ -360,3 +352,22 @@ class Q_look:
         results = np.hstack((tiles,upsilons_results))
 
         np.savetxt('quick_look_results.txt',results)
+
+def generate_waveform_and_compute_upsilon(source_params,a):
+    '''
+    Generate a waveform and compute the upsilon value for that waveform.
+    Wrapped into its own function to allow for parallelisation over GPU. 
+
+    Args:
+    source_params (array): The source parameters to generate the waveform for (transformed into their correct form).
+
+    Returns:
+    upsilon (float): The upsilon value for the waveform
+
+    '''
+    waveform_args,data,psd_array,df,num_segments= a
+    signal= TaylorF2Ecc.BBHx_response_interpolate(source_params,**waveform_args)
+
+    upsilon = upsilon_func(signal,data,psd_array,df,num_segments=num_segments)
+
+    return(upsilon)
