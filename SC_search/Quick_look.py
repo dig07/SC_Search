@@ -333,6 +333,9 @@ class Q_look:
                 print('Maximum upsilon point: ',initial_positions[np.argmax(upsilons)])
 
                 self.max_upsilons.append(max(upsilons))
+                
+                self.log_file_dump(f_low_prior,mc_prior,max(upsilons))
+
             except Exception as e:
                 # -1 is for us an error code that we can remove in postprocessing and we can try and figure out if there is something wrong with a tile
                 self.max_upsilons.append(-1)
@@ -341,7 +344,24 @@ class Q_look:
 
         self.save_results()
 
-
+    def log_file_dump(self,f_low_prior,mc_prior,max_upsilon):
+        # If file doesnt exist its the first line, write headers
+        if not os.path.isfile('quick_look_log.txt'):
+            with open('quick_look_log.txt','w') as f:
+                f.write('f_low_min,f_low_max,mc_min,mc_max,max_upsilon\n')
+                f.write(str(f_low_prior[0])+','+
+                        str(f_low_prior[1])+','+
+                        str(mc_prior[0])+','+
+                        str(mc_prior[1])+','+
+                        str(max_upsilon)+'\n')
+        # If file exists just append 
+        else:
+            with open('quick_look_log.txt','w') as f:
+                f.write(str(f_low_prior[0])+','+
+                        str(f_low_prior[1])+','+
+                        str(mc_prior[0])+','+
+                        str(mc_prior[1])+','+
+                        str(max_upsilon)+'\n')
 
     def save_results(self):
         '''
@@ -367,7 +387,7 @@ def generate_waveform_and_compute_upsilon(source_params,other_params):
                         This contains: waveform_args,data,psd_array,df,num_segments 
 
     Returns:
-    upsilon (float): The upsilon value for the waveform
+    upsilon (float): The upsilon value for the waveforms
 
     '''
     waveform_args,data,psd_array,df,num_segments= other_params
