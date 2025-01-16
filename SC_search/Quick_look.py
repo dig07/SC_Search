@@ -356,7 +356,7 @@ class Q_look:
                         str(max_upsilon)+'\n')
         # If file exists just append 
         else:
-            with open('quick_look_log.txt','w') as f:
+            with open('quick_look_log.txt','a') as f:
                 f.write(str(f_low_prior[0])+','+
                         str(f_low_prior[1])+','+
                         str(mc_prior[0])+','+
