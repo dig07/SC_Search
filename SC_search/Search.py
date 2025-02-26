@@ -116,7 +116,8 @@ class Search:
         """
         Initializes the hierarchical search, via the PySO package, for the semi-coherent search.
         """
-        # Initialise classes at each segment for the semi-coherent search for the semi-coherent search
+        # Initialise classes at each segment for the semi-coherent search for
+        # the semi-coherent search
 
         self.Semi_Coherent_classes = [Semi_Coherent_Model(segment_number,
                                                             self.prior_bounds,

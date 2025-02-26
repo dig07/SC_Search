@@ -86,7 +86,6 @@ class Semi_Coherent_Model(PySO.Model):
         #     params['psi'],)
         # print('\n\n')
         batchsize = params['Mc'].shape[0]
-
         
         loglike = self.waveform_generator.get_log_likelihood(
             params['Mc'], 
@@ -99,7 +98,8 @@ class Semi_Coherent_Model(PySO.Model):
             params['lam'],
             params['beta'],
             params['psi'],
-            False,
+            True,
+            self.segment_number
         )
         try:
             return loglike.get()
