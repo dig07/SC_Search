@@ -89,7 +89,7 @@ class Search:
         '''
 
         # Initialising values for frequency grid
-        self.fmin = self.frequency_series_dict['fmin']
+        self.fmin = self.frequency_series_dict['fmin'] # NOT ACTUALLY TRUE
         self.fmax = self.frequency_series_dict['fmax']
         self.T_obs = self.frequency_series_dict['T_obs']
         # cadence 
