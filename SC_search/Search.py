@@ -119,13 +119,11 @@ class Search:
         # Initialise classes at each segment for the semi-coherent search for
         # the semi-coherent search
 
-        chunksizes = np.floor(self.nT/np.array(self.segment_ladder)).astype(int)
-
         self.Semi_Coherent_classes = [Semi_Coherent_Model(segment_number,
                                                             self.prior_bounds,
                                                             self.data,
                                                             self.waveform_generator)
-                                                            for segment_index,segment_number in enumerate(chunksizes)]
+                                                            for segment_index,segment_number in enumerate(self.segment_ladder)]
         
         PySO_search = PySO.HierarchicalSwarmHandler(self.Semi_Coherent_classes,
                                 self.PySO_num_swarms,# Number of initial swarms
