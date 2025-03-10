@@ -65,6 +65,16 @@ class Search:
         psd = CubicSpline(noise_arr[0], noise_arr[1:], axis=1)(self.f_seg)
         self.psd_arr = np.tile(psd[:,None,:], (1, self.nT, 1))
 
+        # Temporary bodge to clip out the 0s in the PSD array, currently only
+        # clipping out the one at 0.06Hz
+        f_seg_clip_start = 0.059
+        f_seg_clip_end = 0.061
+        f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
+        f_seg_clip_end_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_end)))
+
+        for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
+            self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]
+
         self.data = np.load(data_file_name)
 
         # Setup waveform function 
