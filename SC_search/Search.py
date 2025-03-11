@@ -82,7 +82,14 @@ class Search:
 
         for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
             self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]
-    
+        
+        f_seg_clip_start = 0.0897
+        f_seg_clip_end = 0.0902
+        f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
+        f_seg_clip_end_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_end)))
+
+        for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
+            self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]    
         self.data = np.load(data_file_name)
 
         # Setup waveform function 
