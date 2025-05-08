@@ -30,7 +30,7 @@ class Search:
                  fresnel_kernel_width=5,
                  include_spin = False,
                  use_estimated_PSD = False,
-                 PSD_fle_path = 'PSD_interpolator.npy',):
+                 PSD_file_path = 'PSD_interpolator.npy',):
         '''
         Initializes a new instance of the Search class.
 
@@ -74,6 +74,8 @@ class Search:
 
 
         if use_estimated_PSD == True:
+            print('Using estimated PSD...')
+
             # Load in the PSD interpolator
             psd_interpolator = np.load(PSD_fle_path,allow_pickle=True).item()
 
@@ -92,7 +94,7 @@ class Search:
             self.psd_arr = np.array([psd_A,psd_E,psd_T])
 
         else:   
-
+            print('Using analytic PSD...')
             noise = get_noise_model("sangria", self.f_seg, wd=self.T_obs/(365.25*24*60*60))
             psd_A = noise.psd(self.f_seg, option='A', tdi2 = True)
             psd_E = noise.psd(self.f_seg, option='E', tdi2 = True)
@@ -103,7 +105,7 @@ class Search:
 
             for i in range(self.nT):
                 self.psd_arr[:,i,:] = psd_.copy()
-
+        print('PSD shape vs data shape (sanity check): ',self.psd_arr.shape,self.data.shape)
         # # Generate PSD (For now just read in the spline and evaluate it)
         # noise_arr = np.load("sangria_psd_info.npy")
         # psd = CubicSpline(noise_arr[0], noise_arr[1:], axis=1)(self.f_seg)
