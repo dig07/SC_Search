@@ -12,6 +12,7 @@ from .Swarm_class import Semi_Coherent_Model
 import PySO
 from scipy.interpolate import CubicSpline
 
+from ldc.lisa.noise import get_noise_model
 
 from SmBBHTF.waveforms.time_frequency import TaylorF2EccTF
 
@@ -57,16 +58,32 @@ class Search:
 
         self.PySO_kwargs = PySO_kwargs
 
+        self.data = np.load(data_file_name)
+
         # Generate CPU and GPU frequency grids
         self.generate_tf_grid()
 
-        # Generate PSD (For now just read in the spline and evaluate it)
-        noise_arr = np.load("sangria_psd_info.npy")
-        psd = CubicSpline(noise_arr[0], noise_arr[1:], axis=1)(self.f_seg)
-        self.psd_arr = np.tile(psd[:,None,:], (1, self.nT, 1))
+        noise = get_noise_model("sangria", self.f_seg, wd=self.T_obs/(365.25*24*60*60))
+        psd_A = noise.psd(self.f_seg, option='A', tdi2 = True)
+        psd_E = noise.psd(self.f_seg, option='E', tdi2 = True)
+        psd_T = noise.psd(self.f_seg, option='T', tdi2 = True)
 
-        # Temporary bodge to clip out the 0s in the PSD array, currently only
-        # clipping out the one at 0.06Hz
+        psd_ = np.array([psd_A,psd_E,psd_T]).reshape(3,self.data.shape[2])
+
+        self.psd_arr = np.zeros(self.data.shape)
+
+        for i in range(self.nT):
+            self.psd_arr[:,i,:] = psd_.copy()
+
+
+
+
+        # # Generate PSD (For now just read in the spline and evaluate it)
+        # noise_arr = np.load("sangria_psd_info.npy")
+        # psd = CubicSpline(noise_arr[0], noise_arr[1:], axis=1)(self.f_seg)
+        # self.psd_arr = np.tile(psd[:,None,:], (1, self.nT, 1))
+
+        # Temporary bodge to clip out the 0s in the PSD array
         f_seg_clip_start = 0.029
         f_seg_clip_end = 0.031
         f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
@@ -90,7 +107,6 @@ class Search:
 
         for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
             self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]    
-        self.data = np.load(data_file_name)
 
         # Setup waveform function 
         self.waveform_generator = TaylorF2EccTF(
