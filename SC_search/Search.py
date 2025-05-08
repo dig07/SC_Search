@@ -28,7 +28,9 @@ class Search:
                  data_file_name = 'data.npy',
                  use_GPU = True,
                  fresnel_kernel_width=5,
-                 include_spin = False):
+                 include_spin = False,
+                 use_estimated_PSD = False,
+                 PSD_fle_path = 'PSD_interpolator.npy',):
         '''
         Initializes a new instance of the Search class.
 
@@ -44,7 +46,12 @@ class Search:
             PySO_kwargs (dict): A dictionary containing PySO keyword arguments.
             data_file_name (str, optional): The name of the file containing the data to be searched over.
             noise_only_injection (bool, optional): A flag indicating whether to inject noise only. Defaults to False.  
-            include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.   '''
+            include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.  
+            use_estimated_PSD (bool, optional): A flag to let the user load in
+                an estimated PSD, note it is assumed the PSD object is an interpolator that can evaluate on a tf grid. 
+            PSD_file_path (str, optional): The path to the file containing the
+                estimated PSD interpolator. Defaults to 'PSD_interpolator.npy'.
+             '''
 
         self.frequency_series_dict = time_frequency_series_dict
 
@@ -63,20 +70,37 @@ class Search:
         # Generate CPU and GPU frequency grids
         self.generate_tf_grid()
 
-        noise = get_noise_model("sangria", self.f_seg, wd=self.T_obs/(365.25*24*60*60))
-        psd_A = noise.psd(self.f_seg, option='A', tdi2 = True)
-        psd_E = noise.psd(self.f_seg, option='E', tdi2 = True)
-        psd_T = noise.psd(self.f_seg, option='T', tdi2 = True)
+        if use_estimated_PSD == True:
+            # Load in the PSD interpolator
+            psd_interpolator = np.load(PSD_fle_path,allow_pickle=True).item()
 
-        psd_ = np.array([psd_A,psd_E,psd_T]).reshape(3,self.data.shape[2])
+            # Extract interpolators in three channels 
+            interpolant_A,interpolant_E,interpolant_T = psd_interpolator['A'],psd_interpolator['E'],psd_interpolator['T']
+            
+            # Generate query points as a 2D grid
+            T, F = np.meshgrid(self.t_seg, self.f_seg, indexing='ij')
+            tf_points = np.column_stack((T.ravel(), F.ravel()))
+
+            # Interpolate (assuming interp is your interpolator function)
+            psd_A = interpolant_A(tf_points).reshape(T.shape)  # Reshape to match the grid shape
+            psd_E = interpolant_E(tf_points).reshape(T.shape)  # Reshape to match the grid shape
+            psd_T = interpolant_T(tf_points).reshape(T.shape)  # Reshape to match the grid shape
+
+            psd_ = np.array([psd_A,psd_E,psd_T]).reshape(3,self.data.shape[2])
+
+        else:   
+
+            noise = get_noise_model("sangria", self.f_seg, wd=self.T_obs/(365.25*24*60*60))
+            psd_A = noise.psd(self.f_seg, option='A', tdi2 = True)
+            psd_E = noise.psd(self.f_seg, option='E', tdi2 = True)
+            psd_T = noise.psd(self.f_seg, option='T', tdi2 = True)
+
+            psd_ = np.array([psd_A,psd_E,psd_T]).reshape(3,self.data.shape[2])
 
         self.psd_arr = np.zeros(self.data.shape)
 
         for i in range(self.nT):
             self.psd_arr[:,i,:] = psd_.copy()
-
-
-
 
         # # Generate PSD (For now just read in the spline and evaluate it)
         # noise_arr = np.load("sangria_psd_info.npy")
@@ -84,6 +108,7 @@ class Search:
         # self.psd_arr = np.tile(psd[:,None,:], (1, self.nT, 1))
 
         # Temporary bodge to clip out the 0s in the PSD array
+        
         f_seg_clip_start = 0.029
         f_seg_clip_end = 0.031
         f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
