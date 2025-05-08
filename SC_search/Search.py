@@ -70,6 +70,9 @@ class Search:
         # Generate CPU and GPU frequency grids
         self.generate_tf_grid()
 
+        self.psd_arr = np.zeros(self.data.shape)
+
+
         if use_estimated_PSD == True:
             # Load in the PSD interpolator
             psd_interpolator = np.load(PSD_fle_path,allow_pickle=True).item()
@@ -81,12 +84,12 @@ class Search:
             T, F = np.meshgrid(self.t_seg, self.f_seg, indexing='ij')
             tf_points = np.column_stack((T.ravel(), F.ravel()))
 
-            # Interpolate (assuming interp is your interpolator function)
+            # Interpolate
             psd_A = interpolant_A(tf_points).reshape(T.shape)  # Reshape to match the grid shape
             psd_E = interpolant_E(tf_points).reshape(T.shape)  # Reshape to match the grid shape
             psd_T = interpolant_T(tf_points).reshape(T.shape)  # Reshape to match the grid shape
 
-            psd_ = np.array([psd_A,psd_E,psd_T]).reshape(3,self.data.shape[2])
+            self.psd_arr = np.array([psd_A,psd_E,psd_T])
 
         else:   
 
@@ -97,10 +100,9 @@ class Search:
 
             psd_ = np.array([psd_A,psd_E,psd_T]).reshape(3,self.data.shape[2])
 
-        self.psd_arr = np.zeros(self.data.shape)
 
-        for i in range(self.nT):
-            self.psd_arr[:,i,:] = psd_.copy()
+            for i in range(self.nT):
+                self.psd_arr[:,i,:] = psd_.copy()
 
         # # Generate PSD (For now just read in the spline and evaluate it)
         # noise_arr = np.load("sangria_psd_info.npy")
@@ -108,7 +110,7 @@ class Search:
         # self.psd_arr = np.tile(psd[:,None,:], (1, self.nT, 1))
 
         # Temporary bodge to clip out the 0s in the PSD array
-        
+
         f_seg_clip_start = 0.029
         f_seg_clip_end = 0.031
         f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
