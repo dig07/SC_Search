@@ -47,10 +47,12 @@ class Search:
             data_file_name (str, optional): The name of the file containing the data to be searched over.
             noise_only_injection (bool, optional): A flag indicating whether to inject noise only. Defaults to False.  
             include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.  
-            use_estimated_PSD (bool, optional): A flag to let the user load in
-                an estimated PSD, note it is assumed the PSD object is an interpolator that can evaluate on a tf grid. 
+            use_estimated_PSD (str, optional): A flag to let the user load in
+                an estimated PSD, the estimated PSD is either assumed to be in
+                the format (3,#T,nT) OR an interpolator. #T is the number of
+                time points used to estimate the PSD, which is not generally the same as nT (number of time points in the tf grid) 
             PSD_file_path (str, optional): The path to the file containing the
-                estimated PSD interpolator. Defaults to 'PSD_interpolator.npy'.
+                estimated PSD. Defaults to 'PSD_interpolator.npy'.
              '''
 
         self.frequency_series_dict = time_frequency_series_dict
@@ -76,22 +78,50 @@ class Search:
         if use_estimated_PSD == True:
             print('Using estimated PSD...')
 
-            # Load in the PSD interpolator
-            psd_interpolator = np.load(PSD_fle_path,allow_pickle=True).item()
+            # Load in the PSD object
+            psd_object = np.load(PSD_file_path,allow_pickle=True).item()
 
-            # Extract interpolators in three channels 
-            interpolant_A,interpolant_E,interpolant_T = psd_interpolator['A'],psd_interpolator['E'],psd_interpolator['T']
-            
-            # Generate query points as a 2D grid
-            T, F = np.meshgrid(self.t_seg, self.f_seg, indexing='ij')
-            tf_points = np.column_stack((T.ravel(), F.ravel()))
+            if psd_object['Type'] == 'Interpolator':
 
-            # Interpolate
-            psd_A = interpolant_A(tf_points).reshape(T.shape)  # Reshape to match the grid shape
-            psd_E = interpolant_E(tf_points).reshape(T.shape)  # Reshape to match the grid shape
-            psd_T = interpolant_T(tf_points).reshape(T.shape)  # Reshape to match the grid shape
+                # Extract interpolators in three channels 
+                interpolant_A,interpolant_E,interpolant_T = psd_object['A'],psd_object['E'],psd_object['T']
+                
+                # Generate query points as a 2D grid
+                T, F = np.meshgrid(self.t_seg, self.f_seg, indexing='ij')
+                tf_points = np.column_stack((T.ravel(), F.ravel()))
 
-            self.psd_arr = np.array([psd_A,psd_E,psd_T])
+                # Interpolate
+                psd_A = interpolant_A(tf_points).reshape(T.shape)  # Reshape to match the grid shape
+                psd_E = interpolant_E(tf_points).reshape(T.shape)  
+                psd_T = interpolant_T(tf_points).reshape(T.shape)  
+
+                self.psd_arr = np.array([psd_A,psd_E,psd_T])
+
+            # Use a directly estimated PSD without interpolating 
+            elif psd_object['Type'] == 'Constant':
+
+                # Extract PSD in three channels 
+                psd_A,psd_E,psd_T = psd_object['A'],psd_object['E'],psd_object['T']
+                psd_ = np.array([psd_A,psd_E,psd_T])
+
+                # Extract times over which this psd is estimated
+                time_points= psd_object['Times']
+
+                # time_points index that each t_seg falls into 
+                t_seg_indices_to_match_time_points = np.searchsorted(time_points,self.t_seg) 
+                
+                self.psd_arr = np.zeros((3,self.t_seg.size,self.f_seg.size))
+
+                for t_index,t in enumerate(self.t_seg):
+                    # Which PSD bin should I be extracting 
+                    PSD_file_time_index = t_seg_indices_to_match_time_points[t_index]
+                    
+                    # Edge case, i.e self.t_seg > time_points[-1], just asusme
+                    # it remains constant
+                    if PSD_file_time_index==psd_.shape[1]:
+                        self.psd_arr[:,t_index,:] = psd_[:,-1,:]
+                    else:
+                        self.psd_arr[:,t_index,:] = psd_[:,PSD_file_time_index,:]
 
         else:   
             print('Using analytic PSD...')
