@@ -49,8 +49,9 @@ class Search:
             include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.  
             use_estimated_PSD (str, optional): A flag to let the user load in
                 an estimated PSD, the estimated PSD is either assumed to be in
-                the format (3,#T,nT) OR an interpolator. #T is the number of
-                time points used to estimate the PSD, which is not generally the same as nT (number of time points in the tf grid) 
+                the format (3,#T,#F) OR an interpolator. #T is the number of
+                time points used to estimate the PSD, #F is the number of
+                frequencies. We assume no interpolation in time (sorr I have explained this badly)
             PSD_file_path (str, optional): The path to the file containing the
                 estimated PSD. Defaults to 'PSD_interpolator.npy'.
              '''
@@ -104,8 +105,9 @@ class Search:
                 psd_A,psd_E,psd_T = psd_object['A'],psd_object['E'],psd_object['T']
                 psd_ = np.array([psd_A,psd_E,psd_T])
 
-                # Extract times over which this psd is estimated
+                # Extract frequencies times over which this psd is estimated
                 time_points= psd_object['Times']
+                frequency_points = psd_object['Frequencies']
 
                 # time_points index that each t_seg falls into 
                 t_seg_indices_to_match_time_points = np.searchsorted(time_points,self.t_seg) 
@@ -119,9 +121,9 @@ class Search:
                     # Edge case, i.e self.t_seg > time_points[-1], just asusme
                     # it remains constant
                     if PSD_file_time_index==psd_.shape[1]:
-                        self.psd_arr[:,t_index,:] = psd_[:,-1,:]
+                        self.psd_arr[:,t_index,:] = np.array([self.interpolate_PSD(frequency_points,psd_[i,-1,:]) for i in range(3)])
                     else:
-                        self.psd_arr[:,t_index,:] = psd_[:,PSD_file_time_index,:]
+                        self.psd_arr[:,t_index,:] = np.array([self.interpolate_PSD(frequency_points,psd_[i,PSD_file_time_index,:]) for i in range(3)])
 
         else:   
             print('Using analytic PSD...')
@@ -181,7 +183,16 @@ class Search:
                                                 psd=self.psd_arr,
                                                 use_fresnel_kernel=True,
                                                 fresnel_kernel_width=fresnel_kernel_width)
-
+    
+    def interpolate_PSD(self,f_sparse,PSD):
+        '''
+        Interpolates the PSD over the sparse frequency grid using cubic splines,
+        onto the full frequency grid.
+        '''
+        # Interpolate the PSD over the sparse frequency grid
+        psd_interpolator = CubicSpline(f_sparse, PSD)
+        psd_dense = psd_interpolator(self.f_seg)
+        return psd_dense
 
     def generate_tf_grid(self,):
         '''
