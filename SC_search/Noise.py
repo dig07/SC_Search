@@ -1,11 +1,11 @@
-# try: 
-#     import cupy as np
-#     import numpy as numpy
+try: 
+    import cupy as np
+    import numpy as numpy
 
-# except Exception as e:
-#     print('Cupy not installed')
-#     import numpy as np
-#     import numpy as numpy
+except Exception as e:
+    print('Cupy not installed')
+    import numpy as np
+    import numpy as numpy
 
 
 # import matplotlib.pyplot as plt 
@@ -105,49 +105,49 @@
 #     return A, E, T
 
 
-# def noise_realization(psd, T):
-#     """
-#     Generates a random, Gaussian noise realization from a known PSD. 
+def noise_realization(psd, T):
+    """
+    Generates a random, Gaussian noise realization from a known PSD. 
 
-#     Args:
-#         psd (array of floats): Noise PSD
-#         T (float): Observation time [s] ( = 1 / frequency spacing )
-#         df (float): Sampling frequency [Hz] ( = 1 / LISA sampling cadence )
-#             This is only needed if FD=False.
+    Args:
+        psd (array of floats): Noise PSD
+        T (float): Observation time [s] ( = 1 / frequency spacing )
+        df (float): Sampling frequency [Hz] ( = 1 / LISA sampling cadence )
+            This is only needed if FD=False.
 
-#     Returns:
-#         array of floats: Noise realization for the given PSD
-#     """
-#     # Generate a white noise realization in the frequency domain
-#     wgn_realization = white_noise_realization(T,psd.size)
-#     # Scale using PSD
-#     cgn_realization = psd**0.5 * wgn_realization
-#     return cgn_realization
+    Returns:
+        array of floats: Noise realization for the given PSD
+    """
+    # Generate a white noise realization in the frequency domain
+    wgn_realization = white_noise_realization(T,psd.size)
+    # Scale using PSD
+    cgn_realization = psd**0.5 * wgn_realization
+    return cgn_realization
     
     
-# def white_noise_realization(T, fs=None):
-#     """
-#     Generate a white noise realization.
+def white_noise_realization(T, fs=None):
+    """
+    Generate a white noise realization.
 
-#     Args:
-#         T (float): The duration of the white noise realization.
-#         fs (float, optional): The size of the frequency array to associate with the realization. Default is None.
+    Args:
+        T (float): The duration of the white noise realization.
+        fs (float, optional): The size of the frequency array to associate with the realization. Default is None.
 
-#     Returns:
-#         white_noise (ndarray): The generated white noise realization.
+    Returns:
+        white_noise (ndarray): The generated white noise realization.
 
-#     """
-#     norm1 = 0.5 * T**0.5
-#     re1, im1 = np.random.normal(loc=0, scale= norm1, size=(2, fs))
-#     white_noise = re1 + 1j * im1
-#     # set DC and Nyquist = 0
-#     white_noise[0] = 0
-#     # no Nyquist frequency when N=odd
-#     if np.mod(fs, 2) == 0:
-#         white_noise[-1] = 0
-#     # python: transpose for use with infft
-#     white_noise = np.transpose(white_noise)
-#     return white_noise
+    """
+    norm1 = 0.5 * T**0.5
+    re1, im1 = np.random.normal(loc=0, scale= norm1, size=(2, fs))
+    white_noise = re1 + 1j * im1
+    # set DC and Nyquist = 0
+    white_noise[0] = 0
+    # no Nyquist frequency when N=odd
+    if np.mod(fs, 2) == 0:
+        white_noise[-1] = 0
+    # python: transpose for use with infft
+    white_noise = np.transpose(white_noise)
+    return white_noise
 
 
 # # Confusion noise - taken from Balrog code

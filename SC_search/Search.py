@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
+from .Noise import *
 from .Swarm_class import Semi_Coherent_Model
 import PySO
 from scipy.interpolate import CubicSpline
@@ -30,7 +31,8 @@ class Search:
                  fresnel_kernel_width=5,
                  include_spin = False,
                  use_estimated_PSD = False,
-                 PSD_file_path = 'PSD_interpolator.npy',):
+                 PSD_file_path = 'PSD_interpolator.npy',
+                 generate_noise_realisation = False,):
         '''
         Initializes a new instance of the Search class.
 
@@ -54,6 +56,9 @@ class Search:
                 frequencies. We assume no interpolation in time (sorr I have explained this badly)
             PSD_file_path (str, optional): The path to the file containing the
                 estimated PSD. Defaults to 'PSD_interpolator.npy'.
+            generate_noise_realisation (bool, optional): A flag indicating
+            whether to generate a noise realization. Defaults to False. NOTE
+            THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!
              '''
 
         self.frequency_series_dict = time_frequency_series_dict
@@ -138,6 +143,13 @@ class Search:
             for i in range(self.nT):
                 self.psd_arr[:,i,:] = psd_.copy()
         print('PSD shape vs data shape (sanity check): ',self.psd_arr.shape,self.data.shape)
+
+
+        # Generate tf noise realisation if noise is to be indjected 
+        if generate_noise_realisation == True:
+            noise_tf = self.generate_noise_realisation()
+            self.data += noise_tf
+
         # # Generate PSD (For now just read in the spline and evaluate it)
         # noise_arr = np.load("sangria_psd_info.npy")
         # psd = CubicSpline(noise_arr[0], noise_arr[1:], axis=1)(self.f_seg)
@@ -183,7 +195,29 @@ class Search:
                                                 psd=self.psd_arr,
                                                 use_fresnel_kernel=True,
                                                 fresnel_kernel_width=fresnel_kernel_width)
-    
+
+        def generate_noise_realisation(self,):
+            '''
+            Generates a noise realisation for injecting into data
+
+            Returns:
+                noise: Noise realization 
+            '''
+            # Generate noise in each channel (for each time segment)
+
+            noise = np.zeros((3,self.nT,self.nF),dtype=np.complex)
+        
+            for t_index,t in enumerate(self.t_seg):
+
+                noise_A = noise_realization(self.psd_arr[0,t_index,:],self.T_obs)
+                noise_E = noise_realization(self.psd_arr[1,t_index,:],self.T_obs)
+                noise_T = noise_realization(self.psd_arr[2,t_index,:],self.T_obs)
+
+                noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T]) # On GPU
+
+            return noise       
+
+
     def interpolate_PSD(self,f_sparse,PSD):
         '''
         Interpolates the PSD over the sparse frequency grid using cubic splines,
