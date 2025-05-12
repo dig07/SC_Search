@@ -1,6 +1,6 @@
 # try: 
 #     import cupy as np
-import numpy as numpy
+import numpy as np
 
 # except Exception as e:
 #     print('Cupy not installed')
