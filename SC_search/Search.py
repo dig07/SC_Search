@@ -196,26 +196,26 @@ class Search:
                                                 use_fresnel_kernel=True,
                                                 fresnel_kernel_width=fresnel_kernel_width)
 
-        def generate_noise_realisation(self,):
-            '''
-            Generates a noise realisation for injecting into data
+    def generate_noise_realisation(self,):
+        '''
+        Generates a noise realisation for injecting into data
 
-            Returns:
-                noise: Noise realization 
-            '''
-            # Generate noise in each channel (for each time segment)
+        Returns:
+            noise: Noise realization 
+        '''
+        # Generate noise in each channel (for each time segment)
 
-            noise = np.zeros((3,self.nT,self.nF),dtype=np.complex)
-        
-            for t_index,t in enumerate(self.t_seg):
+        noise = np.zeros((3,self.nT,self.nF),dtype=np.complex)
+    
+        for t_index,t in enumerate(self.t_seg):
 
-                noise_A = noise_realization(self.psd_arr[0,t_index,:],self.T_obs)
-                noise_E = noise_realization(self.psd_arr[1,t_index,:],self.T_obs)
-                noise_T = noise_realization(self.psd_arr[2,t_index,:],self.T_obs)
+            noise_A = noise_realization(self.psd_arr[0,t_index,:],self.T_obs)
+            noise_E = noise_realization(self.psd_arr[1,t_index,:],self.T_obs)
+            noise_T = noise_realization(self.psd_arr[2,t_index,:],self.T_obs)
 
-                noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T]) # On GPU
+            noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T]) # On GPU
 
-            return noise       
+        return noise       
 
 
     def interpolate_PSD(self,f_sparse,PSD):
