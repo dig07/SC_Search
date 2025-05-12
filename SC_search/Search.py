@@ -205,7 +205,7 @@ class Search:
         '''
         # Generate noise in each channel (for each time segment)
 
-        noise = np.zeros((3,self.nT,self.nF),dtype=np.complex)
+        noise = np.zeros((3,self.nT,self.nF),dtype=complex)
     
         for t_index,t in enumerate(self.t_seg):
 
