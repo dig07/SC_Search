@@ -213,7 +213,7 @@ class Search:
             noise_E = noise_realization(self.psd_arr[1,t_index,:],self.T_obs)
             noise_T = noise_realization(self.psd_arr[2,t_index,:],self.T_obs)
 
-            noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T]) # On GPU
+            noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T])
 
         return noise       
 

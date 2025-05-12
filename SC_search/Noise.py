@@ -1,11 +1,11 @@
-try: 
-    import cupy as np
-    import numpy as numpy
+# try: 
+#     import cupy as np
+import numpy as numpy
 
-except Exception as e:
-    print('Cupy not installed')
-    import numpy as np
-    import numpy as numpy
+# except Exception as e:
+#     print('Cupy not installed')
+#     import numpy as np
+#     import numpy as numpy
 
 
 # import matplotlib.pyplot as plt 
