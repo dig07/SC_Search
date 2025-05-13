@@ -148,8 +148,9 @@ class Search:
         # Generate tf noise realisation if noise is to be indjected 
         if generate_noise_realisation == True:
             if use_estimated_PSD == True:
-                self.psd_arr[:,:,self.f_seg<1.e-3] = 0
-            noise_tf = self.generate_noise_realisation()
+                psd_to_generate_noise_from = self.psd_arr.copy()
+                psd_to_generate_noise_from[:,:,self.f_seg<1.e-3] = 0
+            noise_tf = self.generate_noise_realisation(psd_to_generate_noise_from)
             self.data += noise_tf
 
         # # Generate PSD (For now just read in the spline and evaluate it)
@@ -198,7 +199,7 @@ class Search:
                                                 use_fresnel_kernel=True,
                                                 fresnel_kernel_width=fresnel_kernel_width)
 
-    def generate_noise_realisation(self,):
+    def generate_noise_realisation(self,psd_to_generate_noise_from):
         '''
         Generates a noise realisation for injecting into data
 
@@ -211,9 +212,9 @@ class Search:
     
         for t_index,t in enumerate(self.t_seg):
             # Important thing here is that it is dT not T_obs as that is the size of each segment   
-            noise_A = noise_realization(self.psd_arr[0,t_index,:],self.dT)
-            noise_E = noise_realization(self.psd_arr[1,t_index,:],self.dT)
-            noise_T = noise_realization(self.psd_arr[2,t_index,:],self.dT)
+            noise_A = noise_realization(psd_to_generate_noise_from[0,t_index,:],self.dT)
+            noise_E = noise_realization(psd_to_generate_noise_from[1,t_index,:],self.dT)
+            noise_T = noise_realization(psd_to_generate_noise_from[2,t_index,:],self.dT)
 
             noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T])
 
