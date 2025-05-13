@@ -147,8 +147,8 @@ class Search:
 
         # Generate tf noise realisation if noise is to be indjected 
         if generate_noise_realisation == True:
+            psd_to_generate_noise_from = self.psd_arr.copy()
             if use_estimated_PSD == True:
-                psd_to_generate_noise_from = self.psd_arr.copy()
                 psd_to_generate_noise_from[:,:,self.f_seg<1.e-3] = 0
             noise_tf = self.generate_noise_realisation(psd_to_generate_noise_from)
             self.data += noise_tf
