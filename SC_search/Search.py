@@ -32,7 +32,8 @@ class Search:
                  include_spin = False,
                  use_estimated_PSD = False,
                  PSD_file_path = 'PSD_interpolator.npy',
-                 generate_noise_realisation = False,):
+                 generate_noise_realisation = False,
+                 gap_mask = None,):
         '''
         Initializes a new instance of the Search class.
 
@@ -59,6 +60,9 @@ class Search:
             generate_noise_realisation (bool, optional): A flag indicating
             whether to generate a noise realization. Defaults to False. NOTE
             THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!
+            gap_mask (bool or Arraylike, optional): A flag indicating where the
+            data is gapped. When ArrayLike, it is an array mask for the coloumns
+            out of nT that are dropped. 
              '''
 
         self.frequency_series_dict = time_frequency_series_dict
@@ -185,7 +189,6 @@ class Search:
         # Bodge for avoiding nans 
         # self.psd_arr[:,:,self.f_seg<1.e-3] = np.inf
 
-
         # Setup waveform function 
         self.waveform_generator = TaylorF2EccTF(
                                                 self.nT,
@@ -200,6 +203,10 @@ class Search:
                                                 psd=self.psd_arr,
                                                 use_fresnel_kernel=True,
                                                 fresnel_kernel_width=fresnel_kernel_width)
+
+        # Simulating gaps 
+        if gap_mask is not None: 
+            self.waveform_generator.apply_segment_mask(gap_mask)
 
     def generate_noise_realisation(self,psd_to_generate_noise_from):
         '''
