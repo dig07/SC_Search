@@ -143,16 +143,6 @@ class Search:
             for i in range(self.nT):
                 self.psd_arr[:,i,:] = psd_.copy()
         print('PSD shape vs data shape (sanity check): ',self.psd_arr.shape,self.data.shape)
-
-
-        # Generate tf noise realisation if noise is to be indjected 
-        if generate_noise_realisation == True:
-            psd_to_generate_noise_from = self.psd_arr.copy()
-            if use_estimated_PSD == True:
-                psd_to_generate_noise_from[:,:,self.f_seg<1.e-3] = 0
-            noise_tf = self.generate_noise_realisation(psd_to_generate_noise_from)
-            self.data += noise_tf
-
         # # Generate PSD (For now just read in the spline and evaluate it)
         # noise_arr = np.load("sangria_psd_info.npy")
         # psd = CubicSpline(noise_arr[0], noise_arr[1:], axis=1)(self.f_seg)
@@ -183,6 +173,18 @@ class Search:
 
         for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
             self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]    
+
+        print('IS WHOLE PSD POSITIVE: ',np.all(self.psd_arr>0))
+        # Generate tf noise realisation if noise is to be indjected 
+        if generate_noise_realisation == True:
+            psd_to_generate_noise_from = self.psd_arr.copy()
+            #if use_estimated_PSD == True:
+            #    psd_to_generate_noise_from[:,:,self.f_seg<1.e-3] = 0
+            noise_tf = self.generate_noise_realisation(psd_to_generate_noise_from)
+            self.data += noise_tf
+        # Bodge for avoiding nans 
+        # self.psd_arr[:,:,self.f_seg<1.e-3] = np.inf
+
 
         # Setup waveform function 
         self.waveform_generator = TaylorF2EccTF(
