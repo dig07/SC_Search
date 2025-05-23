@@ -186,6 +186,14 @@ class Search:
             #    psd_to_generate_noise_from[:,:,self.f_seg<1.e-3] = 0
             noise_tf = self.generate_noise_realisation(psd_to_generate_noise_from)
             self.data += noise_tf
+
+            # If gaps are present, we need to set the noise to zero in those segments
+            if self.gap_mask is not None:
+
+                total_indices = np.arange(self.nT)
+                dropped_indices= np.setdiff1d(total_indices,gap_mask)
+                self.data[:,dropped_indices,:] = 0.0
+
         # Bodge for avoiding nans 
         # self.psd_arr[:,:,self.f_seg<1.e-3] = np.inf
 
