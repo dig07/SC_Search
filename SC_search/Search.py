@@ -188,7 +188,7 @@ class Search:
             self.data += noise_tf
 
             # If gaps are present, we need to set the noise to zero in those segments
-            if self.gap_mask is not None:
+            if gap_mask is not None:
 
                 total_indices = np.arange(self.nT)
                 dropped_indices= np.setdiff1d(total_indices,gap_mask)
