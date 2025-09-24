@@ -1,312 +1,280 @@
-# try: 
-#     import cupy as cp 
-# except ImportError:
-#     print('Cupy not installed, Inference wont work')
-# import numpy as np
-# import numpy as numpy 
+import numpy as np 
+import matplotlib.pyplot as plt
+import pandas as pd
+import os
 
-# import matplotlib.pyplot as plt
+from .Noise import *
+from .Swarm_class import Coherent_model_inference
+import PySO
+from scipy.interpolate import CubicSpline
 
-# from .Swarm_class import Semi_Coherent_Model
-# from .Utility import TaylorF2Ecc_mc_eta_to_m1m2
-# from .Semi_Coherent_Functions import vanilla_log_likelihood,semi_coherent_logl,noise_weighted_inner_product
-# from .Noise import *
-# from .Waveforms import TaylorF2Ecc, TaylorF2EccSpin
+from ldc.lisa.noise import get_noise_model
 
-# import dynesty
-# from dynesty import utils as dyfunc
+from SmBBHTF.waveforms.time_frequency import TaylorF2EccTF
 
-# class dynesty_inference():
-#     '''
-#     Performs inference on the vanilla likelihood 
-#     - Harcoded to all the same thing the Search is for now
-#     '''
+from nessai.plot import corner_plot
+from nessai.flowsampler import FlowSampler
+from nessai.utils import setup_logger
+class Inference:
+    def __init__(self, 
+            time_frequency_series_dict, 
+            prior_bounds,
+            sampler = 'nessai',
+            sampler_kwargs = {},
+            data_file_name = 'data.npy',
+            use_GPU = True,
+            fresnel_kernel_width=5,
+            use_estimated_PSD = False,
+            PSD_file_path = 'PSD_interpolator.npy',
+            generate_noise_realisation = False,
+            gap_mask = None,):
+                 
+        '''
+        Initializes a new instance of the Search class.
 
-#     def __init__(self, 
-#                     frequency_series_dict, 
-#                     prior_bounds,
-#                     nlive,
-#                     source_parameters=None,
-#                     segment = None,
-#                     load_data_file=True,
-#                     data_file_name=None, 
-#                     include_noise=False,
-#                     include_spin=False,
-#                     confusion=False):
-#         '''
-#         Initialize the Inference object.
-
-#         Args:
-#             frequency_series_dict (dict): A dictionary containing frequency series data.
-#             prior_bounds (numpy.ndarray): An array of prior bounds.
-#             source_parameters (numpy.ndarray): An array of source parameters (Defaults to None, only needed if not loading in datafile).
-#             nlive (int): The number of live points for the nested sampling algorithm.
-#             segment (int): Semi-coherent segment number for the log likelihood, if None then use coherent likelihood. 
-#             load_data_file (bool): Whether to load a data file or generate injection data.
-#             data_file_name (str): The name of the data file to load.
-#             include_noise (bool): Whether to include noise in the generated injection data.
-#             include_spin (bool): Whether to include spin in the parameter estimation. 
-#             confusion (bool, optional): A flag indicating whether to include confusion noise in the search for the PSD . Defaults to False.
-
-#         '''
-
-#         self.frequency_series_dict = frequency_series_dict
-
-#         self.source_parameters = source_parameters
+        Parameters:
+            time_frequency_series_dict (dict): A dictionary containing time-frequency series data. Also contains information about the LISA mission such as
+                time of observation etc. 
+            prior_bounds (list): A list of prior bounds for the search
+            sampler (str, optional):  Name of sampler to be used. Defaults to 'nessai'.
+            sampler_kwargs (dict): A dictionary containing the sampler keyword arguments.
+            data_file_name (str, optional): The name of the file containing the data to be searched over.
+            use_GPU (boolean, optional): Wether to use GPU for the search, defaults to true.
+            fresnel_kernel_width (int, optional): Width of fresnel kernel used for summation, defaults to 5
+            noise_only_injection (bool, optional): A flag indicating whether to inject noise only. Defaults to False.  
+            use_estimated_PSD (str, optional): A flag to let the user load in
+                an estimated PSD, the estimated PSD is either assumed to be in
+                the format (3,#T,#F) OR an interpolator. #T is the number of
+                time points used to estimate the PSD, #F is the number of
+                frequencies. We assume no interpolation in time (sorr I have explained this badly)
+            PSD_file_path (str, optional): The path to the file containing the
+                estimated PSD. Defaults to 'PSD_interpolator.npy'.
+            generate_noise_realisation (bool, optional): A flag indicating
+                whether to generate a noise realization. Defaults to False. NOTE
+                THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!
+                gap_mask (bool or Arraylike, optional): A flag indicating where the
+                data is gapped. When ArrayLike, it is an array mask for the coloumns
+                out of nT that are dropped. 
                 
-#         self.prior_bounds = prior_bounds
-#         self.prior_widths = np.ptp(self.prior_bounds,axis=1)
+        '''        
+
+        self.frequency_series_dict = time_frequency_series_dict
+
+        self.prior_bounds = prior_bounds
         
-#         self.nlive = nlive
+        self.sampler_kwargs = sampler_kwargs
 
-#         # Generate CPU and GPU frequency grids
-#         self.generate_frequency_grids()
+        self.data = np.load(data_file_name)
 
-#         # Generate PSD
-#         self.generate_psd(confusion=confusion)
+        # Generate CPU and GPU frequency grids
+        self.generate_tf_grid()
 
-#         # TODO: Change the function being injected to the direct FFT grid (no interpolation) one just to be rigorous 
-#         # Search is being tuned for these so hardcoded for now
-#         if include_spin == False:
-#             self.waveform_func = TaylorF2Ecc.BBHx_response_interpolate
-#         else: 
-#             self.waveform_func = TaylorF2EccSpin.BBHx_response_interpolate
-
-#         # Waveform arguments (same between both spin-aligned and no spin waveforms)
-#         self.waveform_args = {'freqs_sparse':self.freqs_sparse,
-#                               'freqs_dense':self.freqs,
-#                               'freqs_sparse_on_CPU':self.freqs_sparse_on_CPU,
-#                               'f_high':self.fmax,
-#                               'T_obs':self.T_obs,
-#                               'TDIType':'AET',
-#                               'logging': False}
-
-#         # Generate signal or load the signal we will be searching for 
-#         if load_data_file == True:
-#             # Load in data
-#             self.data = cp.asarray(np.load(data_file_name))
-#         else:
-#             # Generate injection data
-#             self.generate_injection_data(include_noise)
-
-#         # Set the likelihood function
-#         if segment==None:
-#             #If no segment specified use the standard likelihood
-#             self.likelihood = self.standard_likelihood
-#         if segment!=None:
-#             #If segment specified use the semi-coherent likelihood
-#             self.likelihood = self.semi_coherent_likelihood
-#             # Compute the inner product of the data with itself for the likelihood (computed once and stored)
-#             self.d_inner_d = noise_weighted_inner_product(self.data, self.data, self.df, self.psd_array, phase_maximize=False).item()
-#             self.segment_number = segment
-
-#         if source_parameters is not None:
-#             # Check injection values for the injection 
-#             print('Log likelihood at injection: ',self.likelihood(self.source_parameters.copy()))
-
-#     def generate_frequency_grids(self,):
-#         '''
-#         Generates the dense and sparse frequency grids for search. 
-#         Stores both on CPU and GPU.         
-#         '''
-
-#         # Initialising values for frequency grid
-#         self.fmin = self.frequency_series_dict['fmin']
-#         self.fmax = self.frequency_series_dict['fmax']
-#         self.T_obs = self.frequency_series_dict['T_obs']
-
-#         # Downsampling factor is used for the sparse frequency grid for interpolation
-#         self.downsampling_factor = self.frequency_series_dict['downsampling_factor']
-
-#         # Generating frequency grid (dense)
-#         self.df = 1/self.T_obs
-
-#         self.freqs = cp.arange(self.fmin,self.fmax,self.df) # On GPU
-#         self.freqs_on_CPU = self.freqs.get() # On CPU
-
-#         self.freqs_sparse = self.freqs[::self.downsampling_factor]  # On GPU
-
-#         self.freqs_sparse_on_CPU = self.freqs_sparse.get() # On CPU (Used to compute A,f,phase on small number of points)
-
-#     def generate_noise_realisation(self,):
-#         '''
-#         Generates a noise realisation for injecting into data
-
-#         - Harcoded to Michelson PSD for now 
-
-#         Returns:
-#             noise_: Noise realization (3,#FFTgrid)
-#         '''
-#         # Generate noise in each channel
-#         noise_A = noise_realization(self.psd_A,self.T_obs)
-#         noise_E = noise_realization(self.psd_E,self.T_obs)
-#         noise_T = noise_realization(self.psd_T,self.T_obs)
-
-#         noise_ = cp.array([noise_A,noise_E,noise_T]) # On GPU
-
-#         return noise_        
-
-#     def generate_psd(self,confusion=False):
-#         '''
-#         Generates the PSD for the search.
-
-#         - Harcoded to Michelson PSD for now 
-#         '''
-#         # Generate the PSD
-#         Sdisp = Sdisp_SciRD(self.freqs)
-#         Sopt = Sopt_SciRD(self.freqs)
-#         self.psd_A = psd_AEX(self.freqs,Sdisp,Sopt)
-#         self.psd_E = psd_AEX(self.freqs,Sdisp,Sopt)
-#         self.psd_T = psd_TX(self.freqs,Sdisp,Sopt)
-
-#         if confusion == True:
-#             # Adding in confusion noise 
-#             self.psd_A  = Add_confusion(self.freqs,self.psd_A,self.T_obs)
-#             self.psd_E  = Add_confusion(self.freqs,self.psd_E,self.T_obs)
-#             self.psd_T  = Add_confusion(self.freqs,self.psd_T,self.T_obs)
+        self.psd_arr = np.zeros(self.data.shape)
 
 
-#         self.psd_array = cp.array([self.psd_A,self.psd_E,self.psd_T]) # On GPU
+        if use_estimated_PSD == True:
+            print('Using estimated PSD...')
 
-#     def generate_injection_data(self,include_noise=True):
-#         '''
-#         Generates the injection data for the search. 
-#         Saves the data to a file (after conversion to numpy array).
-#         Optionally adds noise. 
+            # Load in the PSD object
+            psd_object = np.load(PSD_file_path,allow_pickle=True).item()
 
-#         Args:
-#             include_noise (bool, optional): A flag indicating whether to include noise. Defaults to True.
+            if psd_object['Type'] == 'Interpolator':
+
+                # Extract interpolators in three channels 
+                interpolant_A,interpolant_E,interpolant_T = psd_object['A'],psd_object['E'],psd_object['T']
+                
+                # Generate query points as a 2D grid
+                T, F = np.meshgrid(self.t_seg, self.f_seg, indexing='ij')
+                tf_points = np.column_stack((T.ravel(), F.ravel()))
+
+                # Interpolate
+                psd_A = interpolant_A(tf_points).reshape(T.shape)  # Reshape to match the grid shape
+                psd_E = interpolant_E(tf_points).reshape(T.shape)  
+                psd_T = interpolant_T(tf_points).reshape(T.shape)  
+
+                self.psd_arr = np.array([psd_A,psd_E,psd_T])
+
+            # Use a directly estimated PSD without interpolating 
+            elif psd_object['Type'] == 'Constant':
+
+                # Extract PSD in three channels 
+                psd_A,psd_E,psd_T = psd_object['A'],psd_object['E'],psd_object['T']
+                psd_ = np.array([psd_A,psd_E,psd_T])
+
+                # Extract frequencies times over which this psd is estimated
+                time_points= psd_object['Times']
+                frequency_points = psd_object['Frequencies']
+
+                # time_points index that each t_seg falls into 
+                t_seg_indices_to_match_time_points = np.searchsorted(time_points,self.t_seg) 
+                
+                self.psd_arr = np.zeros((3,self.t_seg.size,self.f_seg.size))
+
+                for t_index,t in enumerate(self.t_seg):
+                    # Which PSD bin should I be extracting 
+                    PSD_file_time_index = t_seg_indices_to_match_time_points[t_index]
+                    
+                    # Edge case, i.e self.t_seg > time_points[-1], just asusme
+                    # it remains constant
+                    if PSD_file_time_index==psd_.shape[1]:
+                        self.psd_arr[:,t_index,:] = np.array([self.interpolate_PSD(frequency_points,psd_[i,-1,:]) for i in range(3)])
+                    else:
+                        self.psd_arr[:,t_index,:] = np.array([self.interpolate_PSD(frequency_points,psd_[i,PSD_file_time_index,:]) for i in range(3)])
+
+        else:   
+            print('Using analytic PSD...')
+            noise = get_noise_model("sangria", self.f_seg, wd=self.T_obs/(365.25*24*60*60))
+            psd_A = noise.psd(self.f_seg, option='A', tdi2 = True)
+            psd_E = noise.psd(self.f_seg, option='E', tdi2 = True)
+            psd_T = noise.psd(self.f_seg, option='T', tdi2 = True)
+
+            psd_ = np.array([psd_A,psd_E,psd_T]).reshape(3,self.data.shape[2])
+
+
+            for i in range(self.nT):
+                self.psd_arr[:,i,:] = psd_.copy()
+        print('PSD shape vs data shape (sanity check): ',self.psd_arr.shape,self.data.shape)
+        # # Generate PSD (For now just read in the spline and evaluate it)
+        # noise_arr = np.load("sangria_psd_info.npy")
+        # psd = CubicSpline(noise_arr[0], noise_arr[1:], axis=1)(self.f_seg)
+        # self.psd_arr = np.tile(psd[:,None,:], (1, self.nT, 1))
+
+        # Temporary bodge to clip out the 0s in the PSD array
+
+        f_seg_clip_start = 0.029
+        f_seg_clip_end = 0.031
+        f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
+        f_seg_clip_end_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_end)))
+
+        for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
+            self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]
+
+        f_seg_clip_start = 0.059
+        f_seg_clip_end = 0.061
+        f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
+        f_seg_clip_end_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_end)))
+
+        for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
+            self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]
         
-#         '''
-        
-#         # Transform input source parameters to those expected in TaylorF2Ecc (mc,eta)->(m1,m2) + polarization shift
-#         source_parameters_transformed = TaylorF2Ecc_mc_eta_to_m1m2(self.source_parameters.copy())
-        
-#         # Turn logging on for the injection waveform so we can debug statements 
-#         injection_waveform_args = self.waveform_args.copy()
-#         injection_waveform_args['logging'] = True
-        
-#         # Generate noiseless signal
-#         self.injection_model = self.waveform_func(source_parameters_transformed,**injection_waveform_args)
+        f_seg_clip_start = 0.0897
+        f_seg_clip_end = 0.0902
+        f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
+        f_seg_clip_end_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_end)))
 
-#         # Print SNR of injection signal
-#         self.injection_SNR = cp.sqrt(4*cp.real(cp.sum((self.injection_model*self.injection_model.conj()/self.psd_array*self.df)))).item()
-#         print('SNR of injection signal:',self.injection_SNR)
+        for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
+            self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]    
 
-#         # Include noise if asked for
-#         if include_noise == True:
-#             noise = self.generate_noise_realisation()
-#             self.data = noise + self.injection_model
-#         else: 
-#             self.data = self.injection_model.copy()
+        print('IS WHOLE PSD POSITIVE: ',np.all(self.psd_arr>0))
+        # Generate tf noise realisation if noise is to be indjected 
+        if generate_noise_realisation == True:
+            psd_to_generate_noise_from = self.psd_arr.copy()
+            #if use_estimated_PSD == True:
+            #    psd_to_generate_noise_from[:,:,self.f_seg<1.e-3] = 0
+            noise_tf = self.generate_noise_realisation(psd_to_generate_noise_from)
+            self.data += noise_tf
 
-#         # Save data 
-#         self.cupy_to_numpy_save(self.data,'data.npy')
+            # If gaps are present, we need to set the noise to zero in those segments
+            if gap_mask is not None:
 
-#     def cupy_to_numpy_save(self,array,filename):
-#         '''
-#         Converts array to numpy from cupy and saves it to a file
+                total_indices = np.arange(self.nT)
+                dropped_indices= np.setdiff1d(total_indices,gap_mask)
+                self.data[:,dropped_indices,:] = 0.0
 
-#         Args:
-#             array (array): The array to be saved.
-#             filename (str): The filename to save the array to.
-#         '''
-#         np.save(filename,array.get())
+        # Bodge for avoiding nans 
+        # self.psd_arr[:,:,self.f_seg<1.e-3] = np.inf
 
-#     def standard_likelihood(self,parameters):
-#         '''
-#         The likelihood function for the search. 
+        # Setup waveform function 
+        self.waveform_generator = TaylorF2EccTF(
+                                                self.nT,
+                                                self.dT,
+                                                self.fmax,
+                                                self.nF,
+                                                self.dF,
+                                                self.dt,
+                                                compute_TDI=True,
+                                                use_gpu=use_GPU,
+                                                data = self.data,
+                                                psd=self.psd_arr,
+                                                use_fresnel_kernel=True,
+                                                fresnel_kernel_width=fresnel_kernel_width)
 
-#         Args:
-#             parameters (array): The parameters for the model. 
+        # Simulating gaps 
+        if gap_mask is not None: 
+            self.waveform_generator.apply_segment_mask(gap_mask)
+    def generate_noise_realisation(self,psd_to_generate_noise_from):
+        '''
+        Generates a noise realisation for injecting into data
 
-#         Returns:
-#             float: The log likelihood. 
-#         '''
-#         params_transformed = TaylorF2Ecc_mc_eta_to_m1m2(parameters)
+        Returns:
+            noise: Noise realization 
+        '''
+        # Generate noise in each channel (for each time segment)
 
-#         # Generate model
-#         model = self.waveform_func(params_transformed,**self.waveform_args)
-
-#         # Compute likelihood
-#         logl = vanilla_log_likelihood(model,self.data,self.df,self.psd_array)
-
-#         return logl
+        noise = np.zeros((3,self.nT,self.nF),dtype=complex)
     
-#     def semi_coherent_likelihood(self,parameters):
-#         '''
-#         Semi-coherent likelihood function. 
+        for t_index,t in enumerate(self.t_seg):
+            # Important thing here is that it is dT not T_obs as that is the size of each segment   
+            noise_A = noise_realization(psd_to_generate_noise_from[0,t_index,:],self.dT)
+            noise_E = noise_realization(psd_to_generate_noise_from[1,t_index,:],self.dT)
+            noise_T = noise_realization(psd_to_generate_noise_from[2,t_index,:],self.dT)
+
+            noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T])
+
+        return noise       
+
+
+    def interpolate_PSD(self,f_sparse,PSD):
+        '''
+        Interpolates the PSD over the sparse frequency grid using cubic splines,
+        onto the full frequency grid.
+        '''
+        # Interpolate the PSD over the sparse frequency grid
+        psd_interpolator = CubicSpline(f_sparse, PSD)
+        psd_dense = psd_interpolator(self.f_seg)
+        return psd_dense
+
+    def generate_tf_grid(self,):
+        '''
+        Generates the time-frequency grid over which the search is performed.s
+        '''
+
+        # Initialising values for frequency grid
+        self.fmin = self.frequency_series_dict['fmin'] # NOT ACTUALLY TRUE
+        self.fmax = self.frequency_series_dict['fmax']
+        self.T_obs = self.frequency_series_dict['T_obs']
+        # cadence 
+        self.dt = self.frequency_series_dict['dt']
+
+
+        # Length of one tf segment 
+        self.dT = self.frequency_series_dict['dT']
+
+        # Frequency spacing
+        self.dF = 1/self.dT 
+
+        # Number of frequency bins 
+        self.nF = int((self.fmax-self.fmin)/self.dF) + 1 
+
+        # Number of time bins
+        self.nT = int(self.T_obs/self.dT)
         
-#         Args:
-#             parameters (array): The parameters for the model. 
+        # Time and frequency segments
+        self.f_seg = np.arange(1,self.nF+1)*self.dF
+        self.t_seg = np.arange(self.nT)*self.dT
 
-#         Returns:
-#             float: The log likelihood. 
-        
-#         '''
-#         params_transformed = TaylorF2Ecc_mc_eta_to_m1m2(parameters)
+    def initialize_and_run_nessai_inference(self,nlive=100):
+        """
+        Initializes the inference
+        """
+        self.inference_class = Coherent_model_inference(self.prior_bounds,
+                                                            self.data,
+                                                            self.waveform_generator)
 
+        logger = setup_logger(output='./output/')
+        self.sampler = FlowSampler(self.inference_class,
+                                    output='./output/',
+                                    nlive=nlive,
+                                    **self.sampler_kwargs)
 
-#         # Generate model
-#         model = self.waveform_func(params_transformed,**self.waveform_args)
-
-#         # Compute likelihood
-#         logl = semi_coherent_logl(model,self.data,self.psd_array,self.df,self.d_inner_d,num_segments=self.segment_number)
-
-#         return logl
-    
-#     def prior_transform(self,u):
-#         '''
-#         The prior transform for dynesty from the unit cube to the parameter space.
-
-#         Args:
-#             u (array): The unit cube parameters. 
-
-#         Returns:
-#             array: The transformed parameters. 
-#         '''
-#         x = u*self.prior_widths + self.prior_bounds[:,0]
-#         return(x)
-    
-#     def run_sampler(self):
-#         '''
-#         Runs the search using dynesty.
-#         '''
-#         # Set up the sampler
-#         sampler = dynesty.NestedSampler(self.likelihood, self.prior_transform, len(self.prior_bounds),nlive=self.nlive)
-#         sampler.run_nested()
-#         results = sampler.results
-
-#         return results
-    
-#     def resample_and_save(self,results):
-#         '''
-#         Resamples the inference run to equal weighted samples and saves the results to a file.
-        
-#         Args:
-#             results (dynesty.results): The results from the inference run. 
-        
-#         Returns:
-#             array: The resampled samples.
-#         '''
-#         # Extract sampling results.
-#         samples = results.samples  # samples
-#         weights = numpy.exp(results.logwt - results.logz[-1])  # normalized weights
-
-
-#         # Resample weighted samples.
-#         samples_equal = dyfunc.resample_equal(samples, weights)
-
-#         # Save samples
-#         numpy.savetxt('samples.txt',samples_equal)
-
-#         logls = []
-#         for sample in samples_equal:
-#             logls.append(self.likelihood(sample.copy()))
-        
-#         # Save log likelihoods
-#         numpy.savetxt('logls.txt',logls)
-        
-#         print('Maximum log likelihood: ',numpy.max(logls))
-
-#         return(samples_equal)
+        self.sampler.run()

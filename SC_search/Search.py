@@ -1,8 +1,3 @@
-try: 
-    import zeus
-except ImportError:
-    print('Zeus not installed')
-
 import numpy as np 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -29,7 +24,6 @@ class Search:
                  data_file_name = 'data.npy',
                  use_GPU = True,
                  fresnel_kernel_width=5,
-                 include_spin = False,
                  use_estimated_PSD = False,
                  PSD_file_path = 'PSD_interpolator.npy',
                  generate_noise_realisation = False,
@@ -40,16 +34,14 @@ class Search:
         Parameters:
             time_frequency_series_dict (dict): A dictionary containing time-frequency series data. Also contains information about the LISA mission such as
                 time of observation etc. 
-            source_parameters (list): A dictionary containing source parameters for the true injection. Should be a nested list. Every item in this list
-                is a new source. 
             segment_ladder (list): A list of segment ladder values for the semi-coherent search.
             prior_bounds (list): A list of prior bounds for the search
             PySO_num_particles (int): The number of particles to be used in the PySO search.
             PySO_num_swarms (int): The initial number of swarms to be used in the PySO search.
             PySO_kwargs (dict): A dictionary containing PySO keyword arguments.
             data_file_name (str, optional): The name of the file containing the data to be searched over.
-            noise_only_injection (bool, optional): A flag indicating whether to inject noise only. Defaults to False.  
-            include_spin (bool, optional): A flag indicating whether to include spin in the search (Wether waveform contains the 1.5PN spin compoent). Defaults to False.  
+            use_GPU (boolean, optional): Wether to use GPU for the search, defaults to true.
+            fresnel_kernel_width (int, optional): Width of fresnel kernel used for summation, defaults to 5
             use_estimated_PSD (str, optional): A flag to let the user load in
                 an estimated PSD, the estimated PSD is either assumed to be in
                 the format (3,#T,#F) OR an interpolator. #T is the number of
@@ -59,10 +51,10 @@ class Search:
                 estimated PSD. Defaults to 'PSD_interpolator.npy'.
             generate_noise_realisation (bool, optional): A flag indicating
             whether to generate a noise realization. Defaults to False. NOTE
-            THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!
-            gap_mask (bool or Arraylike, optional): A flag indicating where the
-            data is gapped. When ArrayLike, it is an array mask for the coloumns
-            out of nT that are dropped. 
+                *THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!*
+                gap_mask (bool or Arraylike, optional): A flag indicating where the
+                data is gapped. When ArrayLike, it is an array mask for the coloumns
+                out of nT that are dropped. 
              '''
 
         self.frequency_series_dict = time_frequency_series_dict
