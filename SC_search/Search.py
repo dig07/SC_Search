@@ -52,7 +52,7 @@ class Search:
             generate_noise_realisation (bool, optional): A flag indicating
             whether to generate a noise realization. Defaults to False. NOTE
                 *THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!*
-                gap_mask (bool or Arraylike, optional): A flag indicating where the
+            gap_mask (bool or Arraylike, optional): A flag indicating where the
                 data is gapped. When ArrayLike, it is an array mask for the coloumns
                 out of nT that are dropped. 
              '''
@@ -99,7 +99,8 @@ class Search:
 
                 self.psd_arr = np.array([psd_A,psd_E,psd_T])
 
-            # Use a directly estimated PSD without interpolating 
+            # Use a directly estimated PSD, that isnt a stored interpolator file
+            #       This uses a PSD that is computed over usually a number of week segments, and then interpolates this onto a finer time grid
             elif psd_object['Type'] == 'Constant':
 
                 # Extract PSD in three channels 
@@ -184,11 +185,7 @@ class Search:
 
                 total_indices = np.arange(self.nT)
                 dropped_indices= np.setdiff1d(total_indices,gap_mask)
-                self.data[:,dropped_indices,:] = 0.0
-
-        # Bodge for avoiding nans 
-        # self.psd_arr[:,:,self.f_seg<1.e-3] = np.inf
-
+                self.data[:,dropped_indices,:] = 0.0 
         # Setup waveform function 
         self.waveform_generator = TaylorF2EccTF(
                                                 self.nT,

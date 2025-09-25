@@ -15,6 +15,7 @@ from SmBBHTF.waveforms.time_frequency import TaylorF2EccTF
 from nessai.plot import corner_plot
 from nessai.flowsampler import FlowSampler
 from nessai.utils import setup_logger
+
 class Inference:
     def __init__(self, 
             time_frequency_series_dict, 
@@ -27,7 +28,8 @@ class Inference:
             use_estimated_PSD = False,
             PSD_file_path = 'PSD_interpolator.npy',
             generate_noise_realisation = False,
-            gap_mask = None,):
+            gap_mask = None,
+            outdir = './output/'):
                  
         '''
         Initializes a new instance of the Search class.
@@ -50,20 +52,19 @@ class Inference:
             PSD_file_path (str, optional): The path to the file containing the
                 estimated PSD. Defaults to 'PSD_interpolator.npy'.
             generate_noise_realisation (bool, optional): A flag indicating
-                whether to generate a noise realization. Defaults to False. NOTE
-                THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!
-                gap_mask (bool or Arraylike, optional): A flag indicating where the
+                whether to generate a noise realization. Defaults to False.
+                NOTE: THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!
+            gap_mask (bool or Arraylike, optional): A flag indicating where the
                 data is gapped. When ArrayLike, it is an array mask for the coloumns
-                out of nT that are dropped. 
-                
+                out of nT that are dropped.
+            outdir (str, optional): The output directory for the sampler. Defaults to './output/'.
+                          
         '''        
 
         self.frequency_series_dict = time_frequency_series_dict
 
         self.prior_bounds = prior_bounds
-        
-        self.sampler_kwargs = sampler_kwargs
-
+                
         self.data = np.load(data_file_name)
 
         # Generate CPU and GPU frequency grids
@@ -71,6 +72,8 @@ class Inference:
 
         self.psd_arr = np.zeros(self.data.shape)
 
+        self.sample_kwargs = sampler_kwargs
+        self.outdir = outdir 
 
         if use_estimated_PSD == True:
             print('Using estimated PSD...')
@@ -94,7 +97,8 @@ class Inference:
 
                 self.psd_arr = np.array([psd_A,psd_E,psd_T])
 
-            # Use a directly estimated PSD without interpolating 
+            # Use a directly estimated PSD
+            #       This uses a PSD that is computed over usually a number of week segments, and then interpolates this onto a finer time grid
             elif psd_object['Type'] == 'Constant':
 
                 # Extract PSD in three channels 
@@ -140,6 +144,7 @@ class Inference:
         # self.psd_arr = np.tile(psd[:,None,:], (1, self.nT, 1))
 
         # Temporary bodge to clip out the 0s in the PSD array
+        ## TODO: Should this not be only for the analytic PSD ??? Think about this
 
         f_seg_clip_start = 0.029
         f_seg_clip_end = 0.031
@@ -202,6 +207,7 @@ class Inference:
         # Simulating gaps 
         if gap_mask is not None: 
             self.waveform_generator.apply_segment_mask(gap_mask)
+
     def generate_noise_realisation(self,psd_to_generate_noise_from):
         '''
         Generates a noise realisation for injecting into data
@@ -271,9 +277,10 @@ class Inference:
                                                             self.data,
                                                             self.waveform_generator)
 
-        logger = setup_logger(output='./output/')
+        logger = setup_logger(output=self.outdir)
+
         self.sampler = FlowSampler(self.inference_class,
-                                    output='./output/',
+                                    output=self.outdir,
                                     nlive=nlive,
                                     **self.sampler_kwargs)
 
