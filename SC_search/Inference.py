@@ -72,7 +72,7 @@ class Inference:
 
         self.psd_arr = np.zeros(self.data.shape)
 
-        self.sample_kwargs = sampler_kwargs
+        self.sampler_kwargs = sampler_kwargs
         self.outdir = outdir 
 
         if use_estimated_PSD == True:
