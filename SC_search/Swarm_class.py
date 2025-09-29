@@ -92,11 +92,10 @@ class Semi_Coherent_Model(PySO.Model):
             return loglike
         
 
-class Coherent_model_inference(Model):
+class Model_inference(Model):
     '''
     Coherent standard model inference. 
     '''
-
 
     names = ['Mc',
     'eta',
@@ -109,19 +108,18 @@ class Coherent_model_inference(Model):
     'f_low',
     'e0']
 
-    def __init__(self,priors,data,waveform_generator,likelihood_chunksize = 10000):
+    def __init__(self,priors,data,waveform_generator,segment=None):
         '''
         Args:
             priors (list): The priors bounds for the inference. 
             data (array-like): The data. Shape: (3,#FFTgrid).
             waveform_function (function): The waveform function to be used.
-            likelihood_chunksize (int, optional): The chunk size for the likelihood evaluation batching.
+            segment (int, optional): Segment number to be searched over. Defaults to None, i.e coherent.
         '''
         self.bounds = priors
         self.data = data
         self.waveform_generator = waveform_generator
-
-        self.likelihood_chunksize = likelihood_chunksize
+        self.segment = segment 
         self._vectorised_likelihood = True
 
         self.names = ['Mc',
@@ -172,18 +170,36 @@ class Coherent_model_inference(Model):
             float (array): The log likelihood 
         
         '''
-        loglike = self.waveform_generator.get_log_likelihood(
-            params['Mc'], 
-            params['q'], 
-            params['cosinc'], 
-            params['e0'], 
-            params['D'], 
-            params['f0'], 
-            params['phi_coal'], 
-            params['lam'],
-            params['beta'],
-            params['psi'],
-            False)
+        if self.segment==None:
+            loglike = self.waveform_generator.get_log_likelihood(
+                params['Mc'], 
+                params['q'], 
+                params['cosinc'], 
+                params['e0'], 
+                params['D'], 
+                params['f0'], 
+                params['phi_coal'], 
+                params['lam'],
+                params['beta'],
+                params['psi'],
+                False)
+        # Semi-coherent likelihood
+        else: 
+            loglike = self.waveform_generator.get_log_likelihood(
+                params['Mc'], 
+                params['q'], 
+                params['cosinc'], 
+                params['e0'], 
+                params['D'], 
+                params['f0'], 
+                params['phi_coal'], 
+                params['lam'],
+                params['beta'],
+                params['psi'],
+                False,
+                self.segment,
+                True,
+            )
         try:
             return loglike.get()
         except AttributeError:

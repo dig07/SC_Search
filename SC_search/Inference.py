@@ -4,7 +4,7 @@ import pandas as pd
 import os
 
 from .Noise import *
-from .Swarm_class import Coherent_model_inference
+from .Swarm_class import Model_inference
 import PySO
 from scipy.interpolate import CubicSpline
 
@@ -29,10 +29,11 @@ class Inference:
             PSD_file_path = 'PSD_interpolator.npy',
             generate_noise_realisation = False,
             gap_mask = None,
-            outdir = './output/'):
+            outdir = './output/',
+            segment = None):
                  
         '''
-        Initializes a new instance of the Search class.
+        Initializes a new instance of the Inference class.
 
         Parameters:
             time_frequency_series_dict (dict): A dictionary containing time-frequency series data. Also contains information about the LISA mission such as
@@ -58,6 +59,7 @@ class Inference:
                 data is gapped. When ArrayLike, it is an array mask for the coloumns
                 out of nT that are dropped.
             outdir (str, optional): The output directory for the sampler. Defaults to './output/'.
+            segment (int, optional): Segment number to be searched over. Defaults to None, i.e coherent. 
                           
         '''        
 
@@ -72,9 +74,13 @@ class Inference:
 
         self.psd_arr = np.zeros(self.data.shape)
 
+        self.sampler = sampler
+
         self.sampler_kwargs = sampler_kwargs
         self.outdir = outdir 
 
+        self.segment = segment
+        
         if use_estimated_PSD == True:
             print('Using estimated PSD...')
 
@@ -228,7 +234,7 @@ class Inference:
             noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T])
 
         return noise       
-
+ 
 
     def interpolate_PSD(self,f_sparse,PSD):
         '''
@@ -273,9 +279,10 @@ class Inference:
         """
         Initializes the inference
         """
-        self.inference_class = Coherent_model_inference(self.prior_bounds,
+        self.inference_class = Model_inference(self.prior_bounds,
                                                             self.data,
-                                                            self.waveform_generator)
+                                                            self.waveform_generator,
+                                                            segment = self.segment)                                                      
 
         logger = setup_logger(output=self.outdir)
 
