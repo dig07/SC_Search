@@ -56,9 +56,9 @@ class Semi_Coherent_Model(PySO.Model):
         self.constant_distance = constant_distance
 
 
-    def log_likelihood(self, params):
+    def objective_function(self, params):
         '''
-        Log likelihood/optimisation function for PySO. Set to the upsilon statistic for the semi-coherent search.
+        Optimisation function for PySO. Set to the upsilon statistic for the semi-coherent search.
         The fact this is called Log likelihood is an artifact of the way PySO is set up. Can be any 
         quantity to be maximised. 
 
