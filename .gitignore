@@ -3,3 +3,4 @@ SC_search.egg-*
 *.log
 *ipynb_checkpoints*
 *.txt
+*.npy
