@@ -6,6 +6,7 @@ import os
 from .Noise import *
 from .Swarm_class import Semi_Coherent_Model
 import PySO
+
 from scipy.interpolate import CubicSpline
 
 from ldc.lisa.noise import get_noise_model

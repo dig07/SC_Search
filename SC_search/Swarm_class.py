@@ -1,6 +1,6 @@
 import numpy as np
 import PySO
-from nessai.model import Model
+# from nessai.model import Model
 
 class Semi_Coherent_Model(PySO.Model):
     '''
@@ -92,116 +92,116 @@ class Semi_Coherent_Model(PySO.Model):
             return loglike
         
 
-class Model_inference(Model):
-    '''
-    Coherent standard model inference. 
-    '''
+# class Model_inference(Model):
+#     '''
+#     Coherent standard model inference. 
+#     '''
 
-    names = ['Mc',
-    'eta',
-    'D',
-    'beta',
-    'lambda',
-    'inc',#cos(i)
-    'polarization',
-    'Initial orbital phase',
-    'f_low',
-    'e0']
+#     names = ['Mc',
+#     'eta',
+#     'D',
+#     'beta',
+#     'lambda',
+#     'inc',#cos(i)
+#     'polarization',
+#     'Initial orbital phase',
+#     'f_low',
+#     'e0']
 
-    def __init__(self,priors,data,waveform_generator,segment=None):
-        '''
-        Args:
-            priors (list): The priors bounds for the inference. 
-            data (array-like): The data. Shape: (3,#FFTgrid).
-            waveform_function (function): The waveform function to be used.
-            segment (int, optional): Segment number to be searched over. Defaults to None, i.e coherent.
-        '''
-        self.bounds = priors
-        self.data = data
-        self.waveform_generator = waveform_generator
-        self.segment = segment 
-        self._vectorised_likelihood = True
+#     def __init__(self,priors,data,waveform_generator,segment=None):
+#         '''
+#         Args:
+#             priors (list): The priors bounds for the inference. 
+#             data (array-like): The data. Shape: (3,#FFTgrid).
+#             waveform_function (function): The waveform function to be used.
+#             segment (int, optional): Segment number to be searched over. Defaults to None, i.e coherent.
+#         '''
+#         self.bounds = priors
+#         self.data = data
+#         self.waveform_generator = waveform_generator
+#         self.segment = segment 
+#         self._vectorised_likelihood = True
 
-        self.names = ['Mc',
-                        'q',
-                        'cosinc',
-                        'e0',
-                        'D',
-                        'f0',
-                        'phi_coal',
-                        'lam',
-                        'beta',
-                        'psi']
+#         self.names = ['Mc',
+#                         'q',
+#                         'cosinc',
+#                         'e0',
+#                         'D',
+#                         'f0',
+#                         'phi_coal',
+#                         'lam',
+#                         'beta',
+#                         'psi']
 
-    def log_prior(self, x):
-        """Uniform prior"""
-        log_p = np.log(self.in_bounds(x), dtype="float")
-        for bounds in self.bounds.values():
-            log_p -= np.log(bounds[1] - bounds[0])
-        return log_p
+#     def log_prior(self, x):
+#         """Uniform prior"""
+#         log_p = np.log(self.in_bounds(x), dtype="float")
+#         for bounds in self.bounds.values():
+#             log_p -= np.log(bounds[1] - bounds[0])
+#         return log_p
 
-    def to_unit_hypercube(self, x):
-        """Map to the unit hyper-cube"""
-        x_out = x.copy()
-        for n in self.names:
-            x_out[n] = (x[n] - self.bounds[n][0]) / (
-                self.bounds[n][1] - self.bounds[n][0]
-            )
-        return x_out
+#     def to_unit_hypercube(self, x):
+#         """Map to the unit hyper-cube"""
+#         x_out = x.copy()
+#         for n in self.names:
+#             x_out[n] = (x[n] - self.bounds[n][0]) / (
+#                 self.bounds[n][1] - self.bounds[n][0]
+#             )
+#         return x_out
 
-    def from_unit_hypercube(self, x):
-        """Map from the unit hyper-cube"""
-        x_out = x.copy()
-        for n in self.names:
-            x_out[n] = (self.bounds[n][1] - self.bounds[n][0]) * x[
-                n
-            ] + self.bounds[n][0]
-        return x_out
+#     def from_unit_hypercube(self, x):
+#         """Map from the unit hyper-cube"""
+#         x_out = x.copy()
+#         for n in self.names:
+#             x_out[n] = (self.bounds[n][1] - self.bounds[n][0]) * x[
+#                 n
+#             ] + self.bounds[n][0]
+#         return x_out
 
 
-    def log_likelihood(self, params):
-        '''
-        Log likelihood to be accessed by a sampler
+#     def log_likelihood(self, params):
+#         '''
+#         Log likelihood to be accessed by a sampler
 
-        Args:
-            params (dict): Waveform parameters. (arrays)
+#         Args:
+#             params (dict): Waveform parameters. (arrays)
         
-        Returns:
-            float (array): The log likelihood 
+#         Returns:
+#             float (array): The log likelihood 
         
-        '''
-        if self.segment==None:
-            loglike = self.waveform_generator.get_log_likelihood(
-                params['Mc'], 
-                params['q'], 
-                params['cosinc'], 
-                params['e0'], 
-                params['D'], 
-                params['f0'], 
-                params['phi_coal'], 
-                params['lam'],
-                params['beta'],
-                params['psi'],
-                False)
-        # Semi-coherent likelihood
-        else: 
-            loglike = self.waveform_generator.get_log_likelihood(
-                params['Mc'], 
-                params['q'], 
-                params['cosinc'], 
-                params['e0'], 
-                params['D'], 
-                params['f0'], 
-                params['phi_coal'], 
-                params['lam'],
-                params['beta'],
-                params['psi'],
-                False,
-                self.segment,
-                True,
-            )
-        try:
-            return loglike.get()
-        except AttributeError:
-            return loglike
+#         '''
+#         if self.segment==None:
+#             loglike = self.waveform_generator.get_log_likelihood(
+#                 params['Mc'], 
+#                 params['q'], 
+#                 params['cosinc'], 
+#                 params['e0'], 
+#                 params['D'], 
+#                 params['f0'], 
+#                 params['phi_coal'], 
+#                 params['lam'],
+#                 params['beta'],
+#                 params['psi'],
+#                 False)
+#         # Semi-coherent likelihood
+#         else: 
+#             loglike = self.waveform_generator.get_log_likelihood(
+#                 params['Mc'], 
+#                 params['q'], 
+#                 params['cosinc'], 
+#                 params['e0'], 
+#                 params['D'], 
+#                 params['f0'], 
+#                 params['phi_coal'], 
+#                 params['lam'],
+#                 params['beta'],
+#                 params['psi'],
+#                 False,
+#                 self.segment,
+#                 True,
+#             )
+#         try:
+#             return loglike.get()
+#         except AttributeError:
+#             return loglike
             

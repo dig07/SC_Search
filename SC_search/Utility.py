@@ -7,6 +7,7 @@ import numpy as np
 
 # Corner functions
 from scipy import stats
+import scipy
 from matplotlib import gridspec
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -347,8 +348,84 @@ def compute_monte_carlo_estimate_of_sky_area(posterior_samples, KDE_downsampling
 
     return(sky_area)
 
+def setup_tf_grid(T,
+                  dt, 
+                  dT):
+    '''
+    Sets up time-frequency grid for time-frequency domain calculations. 
 
+    Args:
+        T (float): Total observation time (s) 
+        dt (float): Sampling time (s)
+        dT (float): Time segment duration (s)
+    Returns:
+        t_grid (numpy.array): Time grid (s)
+        f_grid (numpy.array): Frequency grid (Hz)
+    '''
+
+    print("Setting up time-frequency grid...")
+    print(f"Total observation time: {T} s")
+
+    # int -> Rounding down 
+    nT = int(T/dT) # length of each time chunk
+    
+    print(f"Number of time segments: {nT}")
+
+    t_grid = np.arange(nT+1)*dT # nT+1 as we want nT time segments, which means nT+1 time points
+    # Frequency resolution 
+    dF =f_min= (1/dT)
+    f_max = 1/(dt)/ 2 # Nyquist frequency 
+
+    nF = int((f_max - f_min) / dF) + 1 # frequency bins per segment
+    print(f"Number of frequency bins per segment: {nF}")
+
+    # Frequency grid (neglecting DC component)
+    f_grid = np.arange(1,nF+1) * dF  # segment frequencies
+    # Time grid
+    print('NOTE: The time grid calculates the number of segments as int(T/dT), which means it rounds down the number of segments.')
+    return(t_grid,f_grid)
         
+def SFT_data(data,
+             times,
+             t_grid,
+             nT,
+             nF,
+             window_alpha = 0.01):
+    '''
+    Generate SFT data from time-domain data. 
+
+    Args:
+        data (numpy.array): Time-domain data (3,#time samples)
+        times (numpy.array): Time stamps corresponding to the time-domain data (shape: #time samples)
+        t_grid (numpy.array): SFT time grid 
+        nT (int): Number of time segments
+        nF (int): Number of frequency bins per segment
+        window_alpha (float): Alpha parameter for the Tukey window
+    Returns:
+        SFT_data (numpy.array): SFT data
+    '''
+    print("Generating SFT data...")
+
+    SFT_data = np.zeros((3,nT,nF),dtype=complex)
+
+    for i in range(nT):
+        start_time = t_grid[i]
+        end_time = t_grid[i+1]
+
+        times_mask = (times>=start_time) & (times<end_time)
+
+        channel_1_segment_data = data[0,:][times_mask] 
+        channel_2_segment_data = data[1,:][times_mask]
+        channel_3_segment_data = data[2,:][times_mask]
+        # Window function 
+        win = scipy.signal.windows.tukey(np.sum((times >= start_time) & (times < end_time)), alpha=window_alpha)
+
+
+        SFT_data[0,i,:] = np.fft.rfft(channel_1_segment_data*win)[1:] 
+        SFT_data[1,i,:] = np.fft.rfft(channel_2_segment_data*win)[1:] 
+        SFT_data[2,i,:] = np.fft.rfft(channel_3_segment_data*win)[1:] 
+
+    return(SFT_data)
 
 def corner_mine(posteriors,
                 quantiles=[],
