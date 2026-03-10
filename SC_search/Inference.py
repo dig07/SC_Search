@@ -238,12 +238,18 @@ class Inference:
 
     def interpolate_PSD(self,f_sparse,PSD):
         '''
-        Interpolates the PSD over the sparse frequency grid using cubic splines,
-        onto the full frequency grid.
+        Interpolates the PSD over the sparse frequency grid using cubic splines
+        in log-space, onto the full frequency grid. This ensures the interpolated
+        PSD remains strictly positive.
         '''
-        # Interpolate the PSD over the sparse frequency grid
-        psd_interpolator = CubicSpline(f_sparse, PSD)
-        psd_dense = psd_interpolator(self.f_seg)
+        # Mask out any zero or negative values before taking log
+        positive_mask = PSD > 0
+        f_sparse_pos = f_sparse[positive_mask]
+        PSD_pos = PSD[positive_mask]
+
+        # Interpolate in log-space to guarantee positivity
+        psd_interpolator = CubicSpline(f_sparse_pos, np.log(PSD_pos))
+        psd_dense = np.exp(psd_interpolator(self.f_seg))
         return psd_dense
 
     def generate_tf_grid(self,):
