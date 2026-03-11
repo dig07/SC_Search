@@ -408,6 +408,9 @@ def SFT_data(data,
 
     SFT_data = np.zeros((3,nT,nF),dtype=complex)
 
+    # cadence of time-domain observations. 
+    dt = times[1]-times[0]
+
     for i in range(nT):
         start_time = t_grid[i]
         end_time = t_grid[i+1]
@@ -421,9 +424,9 @@ def SFT_data(data,
         win = scipy.signal.windows.tukey(np.sum((times >= start_time) & (times < end_time)), alpha=window_alpha)
 
 
-        SFT_data[0,i,:] = np.fft.rfft(channel_1_segment_data*win)[1:] 
-        SFT_data[1,i,:] = np.fft.rfft(channel_2_segment_data*win)[1:] 
-        SFT_data[2,i,:] = np.fft.rfft(channel_3_segment_data*win)[1:] 
+        SFT_data[0,i,:] = np.fft.rfft(channel_1_segment_data*win)[1:]*dt 
+        SFT_data[1,i,:] = np.fft.rfft(channel_2_segment_data*win)[1:]*dt 
+        SFT_data[2,i,:] = np.fft.rfft(channel_3_segment_data*win)[1:]*dt 
 
     return(SFT_data)
 

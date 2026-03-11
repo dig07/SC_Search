@@ -1,207 +1,96 @@
 import numpy as np
 import PySO
-# from nessai.model import Model
+
 
 class Semi_Coherent_Model(PySO.Model):
-    '''
-    Model class for *one* semi-coherent segment, to be used by the PySO package. 
-    For now this is hardcoded to TaylorF2Ecc waveform. 
-    '''
+    """PySO model for a single segment of the semi-coherent search ladder.
 
-    names = ['Mc',
-    'eta',
-    # 'D',
-    'beta',
-    'lambda',
-    'inc',#cos(i)
-    'polarization',
-    # 'Initial orbital phase',
-    'f_low',
-    'e0']
+    Wraps the waveform generator's log-likelihood (upsilon statistic) so
+    that ``PySO.HierarchicalSwarmHandler`` can optimise over it.
 
-    def __init__(self,segment_number,priors,data,waveform_generator,
-                 constant_final_orbital_phase= 0, constant_distance=100.e+6):
-        '''
-        Args:
-            segment_number (int): The segment number of the semi-coherent search.
-            priors (dict): The priors bounds for the model. 
-            data (array-like): The data.
-            waveform_generator (function): The waveform generator to be used
-            (from SMBBHTF). 
-            constant_initial_orbital_phase (float, optional): The constant initial orbital phase. Defaults to 0.
-            constant_distance (float, optional): The constant distance. Defaults
-            to 100.e+6.
-        '''
+    Distance and final orbital phase are held fixed: distance factors out
+    of the search statistic, and the final orbital phase is analytically
+    maximised over in the semi-coherent framework.
+
+    Parameters
+    ----------
+    segment_number : int
+        Which segment this model represents in the
+        semi-coherent ladder.
+    priors : dict
+        Prior bounds for every search parameter, keyed by name.
+    data : ndarray
+        The time-frequency data array (shape ``(3, nT, nF)``).
+    waveform_generator : object
+        Waveform generator instance (e.g. ``TaylorF2EccTF``) exposing a
+        ``get_log_likelihood`` method.
+    constant_final_orbital_phase : float, optional
+        Fixed value used for the final orbital phase.  Defaults to 0.
+    constant_distance : float, optional
+        Fixed luminosity distance in parsecs.  Defaults to 1e8.
+    """
+
+    names = [
+        "Mc",
+        "q",
+        "cosinc",
+        "e0",
+        "f0",
+        "lam",
+        "beta",
+        "psi",
+    ]
+
+    def __init__(
+        self,
+        segment_number,
+        priors,
+        data,
+        waveform_generator,
+        constant_final_orbital_phase=0,
+        constant_distance=100.0e6,
+    ):
         self.segment_number = segment_number
         self.bounds = priors
         self.data = data
         self.waveform_generator = waveform_generator
-        # D and phi_coal maximised over in the search
-        self.names = ['Mc',
-                        'q',
-                        'cosinc',
-                        'e0',
-                        #'D',
-                        'f0',
-                        #'phi_coal',
-                        'lam',
-                        'beta',
-                        'psi']
-        
-
-
-        # We hold  final orbital phase and distance fixed as distance factors out in the search statistic,
-        #    and final orbital phase is unmeasured due to the semi-coherent phase maximisation 
         self.constant_final_orbital_phase = constant_final_orbital_phase
         self.constant_distance = constant_distance
 
-
     def objective_function(self, params):
-        '''
-        Optimisation function for PySO. Set to the upsilon statistic for the semi-coherent search.
-        The fact this is called Log likelihood is an artifact of the way PySO is set up. Can be any 
-        quantity to be maximised. 
+        """Evaluate the semi-coherent search statistic (upsilon) for a batch of particles.
 
-        Args:
-            params (dict): Waveform parameters. Can be arrays for batched evaluations.
-        
-        Returns:
-            loglike (array): The log likelihood (Any quantity to be optimised).
-        
-        '''
+        Parameters
+        ----------
+        params : dict of ndarray
+            Parameter arrays keyed by name.  Each array has shape
+            ``(batch_size,)``.
 
-        batchsize = params['Mc'].shape[0]
-        
+        Returns
+        -------
+        statistic : ndarray
+            Search statistic value for each particle.
+        """
+        batch_size = params["Mc"].shape[0]
+
         loglike = self.waveform_generator.get_log_likelihood(
-            params['Mc'], 
-            params['q'], 
-            params['cosinc'], 
-            params['e0'], 
-            [self.constant_distance]*batchsize, 
-            params['f0'], 
-            [self.constant_final_orbital_phase]*batchsize, 
-            params['lam'],
-            params['beta'],
-            params['psi'],
+            params["Mc"],
+            params["q"],
+            params["cosinc"],
+            params["e0"],
+            [self.constant_distance] * batch_size,
+            params["f0"],
+            [self.constant_final_orbital_phase] * batch_size,
+            params["lam"],
+            params["beta"],
+            params["psi"],
             True,
-            self.segment_number
+            self.segment_number,
         )
+
+        # CuPy arrays expose .get(); NumPy arrays do not.
         try:
             return loglike.get()
         except AttributeError:
             return loglike
         
-
-# class Model_inference(Model):
-#     '''
-#     Coherent standard model inference. 
-#     '''
-
-#     names = ['Mc',
-#     'eta',
-#     'D',
-#     'beta',
-#     'lambda',
-#     'inc',#cos(i)
-#     'polarization',
-#     'Initial orbital phase',
-#     'f_low',
-#     'e0']
-
-#     def __init__(self,priors,data,waveform_generator,segment=None):
-#         '''
-#         Args:
-#             priors (list): The priors bounds for the inference. 
-#             data (array-like): The data. Shape: (3,#FFTgrid).
-#             waveform_function (function): The waveform function to be used.
-#             segment (int, optional): Segment number to be searched over. Defaults to None, i.e coherent.
-#         '''
-#         self.bounds = priors
-#         self.data = data
-#         self.waveform_generator = waveform_generator
-#         self.segment = segment 
-#         self._vectorised_likelihood = True
-
-#         self.names = ['Mc',
-#                         'q',
-#                         'cosinc',
-#                         'e0',
-#                         'D',
-#                         'f0',
-#                         'phi_coal',
-#                         'lam',
-#                         'beta',
-#                         'psi']
-
-#     def log_prior(self, x):
-#         """Uniform prior"""
-#         log_p = np.log(self.in_bounds(x), dtype="float")
-#         for bounds in self.bounds.values():
-#             log_p -= np.log(bounds[1] - bounds[0])
-#         return log_p
-
-#     def to_unit_hypercube(self, x):
-#         """Map to the unit hyper-cube"""
-#         x_out = x.copy()
-#         for n in self.names:
-#             x_out[n] = (x[n] - self.bounds[n][0]) / (
-#                 self.bounds[n][1] - self.bounds[n][0]
-#             )
-#         return x_out
-
-#     def from_unit_hypercube(self, x):
-#         """Map from the unit hyper-cube"""
-#         x_out = x.copy()
-#         for n in self.names:
-#             x_out[n] = (self.bounds[n][1] - self.bounds[n][0]) * x[
-#                 n
-#             ] + self.bounds[n][0]
-#         return x_out
-
-
-#     def log_likelihood(self, params):
-#         '''
-#         Log likelihood to be accessed by a sampler
-
-#         Args:
-#             params (dict): Waveform parameters. (arrays)
-        
-#         Returns:
-#             float (array): The log likelihood 
-        
-#         '''
-#         if self.segment==None:
-#             loglike = self.waveform_generator.get_log_likelihood(
-#                 params['Mc'], 
-#                 params['q'], 
-#                 params['cosinc'], 
-#                 params['e0'], 
-#                 params['D'], 
-#                 params['f0'], 
-#                 params['phi_coal'], 
-#                 params['lam'],
-#                 params['beta'],
-#                 params['psi'],
-#                 False)
-#         # Semi-coherent likelihood
-#         else: 
-#             loglike = self.waveform_generator.get_log_likelihood(
-#                 params['Mc'], 
-#                 params['q'], 
-#                 params['cosinc'], 
-#                 params['e0'], 
-#                 params['D'], 
-#                 params['f0'], 
-#                 params['phi_coal'], 
-#                 params['lam'],
-#                 params['beta'],
-#                 params['psi'],
-#                 False,
-#                 self.segment,
-#                 True,
-#             )
-#         try:
-#             return loglike.get()
-#         except AttributeError:
-#             return loglike
-            

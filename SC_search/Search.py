@@ -285,18 +285,32 @@ class Search:
         # Response function 
         AET_TFs_func = pygwtf.response.transfer.get_AET_TFs 
 
-        # This returns a function which is the kernel that directly takes in waveform parameters and outputs search statistics. 
+        # This returns a function which is the kernel that directly takes in waveform parameters and outputs search statistics.         
         self.statistic_generator = pygwtf.fresnel.kernel.analytic_kernel_constructor(config,
                                                   amp_func,
                                                   time_to_coalescence_func,
                                                   phi_f_fdot_func,
                                                   AET_TFs_func,
                                                   tdi_type=2,
-                                                  gpu=use_GPU)
+                                                  gpu=use_GPU,
+                                                  compute_statistic=True)
         
-        # 
-        self.p = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath)
-                  
+        # Waveform generator object, fills in array provided to it with waveform, useful for debugging, constructed using the same methods as the statistic generator 
+        self.debugging_waveform_generator = pygwtf.fresnel.kernel.analytic_kernel_constructor(config,
+                                            amp_func,
+                                            time_to_coalescence_func,
+                                            phi_f_fdot_func,
+                                            AET_TFs_func,
+                                            tdi_type=2,
+                                            gpu=use_GPU,
+                                            compute_statistic=False)
+        
+        # Positions of spacecraft (3,3,nT)
+        p = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath)
+
+        # Needs to transform this to (nT,3,3) for the gwtf kernel #TODO: Not sure about the order of this transposing
+        self.p = p.transpose(2,0,1)
+
         # if gap_mask is not None:
         #     self.waveform_generator.apply_segment_mask(gap_mask)
 
