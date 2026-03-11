@@ -4,6 +4,7 @@ import os
 from .Noise import *
 from .Swarm_class import Semi_Coherent_Model
 import PySO
+import pygwtf 
 
 from scipy.interpolate import CubicSpline
 
@@ -38,7 +39,7 @@ class Search:
     ----------
     time_frequency_series_dict : dict
         Contains the time-frequency grid parameters.  Expected keys:
-        ``'fmin'``, ``'fmax'``, ``'T_obs'``, ``'dT'``.
+        ``'T_obs'``, ``'dT'``.
     segment_ladder : list of int
         Number of segments at each step of the semi-coherent hierarchy.
     prior_bounds : list
@@ -90,8 +91,7 @@ class Search:
         """Load the SFT data array and construct the time-frequency grid.
 
         Reads ``data.npy``, ``t_grid.npy``, and ``f_grid.npy`` from
-        *datafile_path* and trims the frequency axis to the
-        ``[fmin, fmax)`` range specified in ``frequency_series_dict``.
+        *datafile_path*.
 
         Parameters
         ----------
@@ -106,17 +106,14 @@ class Search:
         """
         self.data = np.load(os.path.join(datafile_path, data_file_name))
         self.t_seg = np.load(os.path.join(datafile_path, t_grid_key))
-        f_grid = np.load(os.path.join(datafile_path, f_grid_key))
+        self.f_seg = np.load(os.path.join(datafile_path, f_grid_key))
 
         # Unpack grid parameters
-        self.fmin = self.frequency_series_dict["fmin"]
-        self.fmax = self.frequency_series_dict["fmax"]
         self.T_obs = self.frequency_series_dict["T_obs"]
         self.dT = self.frequency_series_dict["dT"]
         self.dF = 1.0 / self.dT
 
         # Trim frequency grid to search range
-        self.f_seg = f_grid[(f_grid >= self.fmin) & (f_grid < self.fmax)]
         self.nT = self.t_seg.size - 1
         self.nF = self.f_seg.size
 
@@ -247,11 +244,21 @@ class Search:
             dropped = np.setdiff1d(all_indices, kept)
             self.data[:, dropped, :] = 0.0
 
-    def setup_waveform_generator(self, use_GPU=True, fresnel_kernel_width=5, gap_mask=None):
-        """Initialise the TaylorF2EccTF waveform generator.
+    def setup_waveform_generator(self, mojito_orbit_filepath='./mojito_orbits.h5',
+                                 use_GPU=True, fresnel_kernel_width=5, gap_mask=None):
+        """Initialise the waveform generator. 
+        
+        Two main elements to this: 
+            - F2Ecc waveform model functions: amplitude, time to coalescence, and phase evolution.
+            - LISA response function: AET transfer functions. 
+         
+        Group waveform + response together. 
+            At the end of the day they both combine to produce the GW model which enters the statistic/likelihood.
 
         Parameters
         ----------
+        mojito_orbit_filepath : str, optional
+            Containing ESA orbits for the spacecraft (used to setup the response function).  Defaults to './mojito_orbits.h5'.
         use_GPU : bool, optional
             Whether to run the waveform model on CUDA.  Defaults to True.
         fresnel_kernel_width : int, optional
@@ -259,24 +266,67 @@ class Search:
         gap_mask : array-like of int or None, optional
             If provided, the corresponding segment mask is applied to the
             waveform generator so that gapped segments are excluded.
-        # """
-        # self.waveform_generator = TaylorF2EccTF(
-        #     self.nT,
-        #     self.dT,
-        #     self.fmax,
-        #     self.nF,
-        #     self.dF,
-        #     self.dt,
-        #     compute_TDI=True,
-        #     use_gpu=use_GPU,
-        #     data=self.data,
-        #     psd=self.psd_arr,
-        #     use_fresnel_kernel=True,
-        #     fresnel_kernel_width=fresnel_kernel_width,
-        # )
+            NOTE: Not implemented yet
+        """
 
+        # Setup config that waveform generator needs
+        config = {'nT':self.nT,
+                  'nF':self.nF,
+                  'dT':self.dT,
+                  'dF':self.dF,
+                  'kernel_width':fresnel_kernel_width,
+                  'nparams':7}
+        
+        # Functions to pass to the kernel, these are the functions that the kernel will call at each SFT segment to generate the fresnel waveform
+        amp_func = pygwtf.models.taylorf2ecc.common._get_amplitude
+        time_to_coalescence_func = pygwtf.models.taylorf2ecc.common._get_time_to_coalescence
+        phi_f_fdot_func = pygwtf.models.taylorf2ecc.common._get_phi_f_fdot
+
+        # Response function 
+        AET_TFs_func = pygwtf.response.transfer.get_AET_TFs 
+
+        # This returns a function which is the kernel that directly takes in waveform parameters and outputs search statistics. 
+        self.statistic_generator = pygwtf.fresnel.kernel.analytic_kernel_constructor(config,
+                                                  amp_func,
+                                                  time_to_coalescence_func,
+                                                  phi_f_fdot_func,
+                                                  AET_TFs_func,
+                                                  tdi_type=2,
+                                                  gpu=use_GPU)
+        
+        # 
+        self.p = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath)
+                  
         # if gap_mask is not None:
         #     self.waveform_generator.apply_segment_mask(gap_mask)
+
+    def setup_response_function(self,mojito_orbit_filepath='./mojito_orbits.h5'):
+        """
+        Setup the LISA response funtion. 
+
+        - Reads in the mojito orbit file which contains position data for each spacecraft.
+        - Interpolates (using Cubicspline) to SFT fixed time array to the SFT segment times. 
+        - Outputs positions of all spacecraft at central times within each SFT segment. 
+
+        Ran once at the beginning of analysis. 
+
+        Feeds into the AET_TFs_func within the kernel. 
+
+        Parameters
+        ----------
+        mojito_orbit_filepath : str, optional
+            Containing ESA orbits.  Defaults to './mojito_orbits.h5'.
+
+        Returns
+        -------
+        p : array of shape (3,3,nT)
+            Positions of 3 spacecraft in SSB frame at central SFT times. 
+        """
+        
+        p = pygwtf.response.orbits.generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath, 
+                                                              t_sft=self.t_seg)
+
+        return(p)
 
     def initialize_and_run_search(self):
         """Run the hierarchical semi-coherent PSO search.
