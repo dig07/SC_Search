@@ -245,7 +245,8 @@ class Search:
             self.data[:, dropped, :] = 0.0
 
     def setup_waveform_generator(self, mojito_orbit_filepath='./mojito_orbits.h5',
-                                 use_GPU=True, fresnel_kernel_width=5, gap_mask=None):
+                                 use_GPU=True, fresnel_kernel_width=5, gap_mask=None,
+                                 spin_only_waveform=True):
         """Initialise the waveform generator. 
         
         Two main elements to this: 
@@ -267,6 +268,9 @@ class Search:
             If provided, the corresponding segment mask is applied to the
             waveform generator so that gapped segments are excluded.
             NOTE: Not implemented yet
+        spin_only_waveform : bool, optional
+            If True, use a waveform model that includes only spin effects and no eccentricity. (T3)
+            If False, use a waveform model that includes both spin and eccentricity effects. (F2Ecc)  Defaults to True.
         """
 
         # Setup config that waveform generator needs
@@ -278,9 +282,15 @@ class Search:
                   'nparams':7}
         
         # Functions to pass to the kernel, these are the functions that the kernel will call at each SFT segment to generate the fresnel waveform
-        amp_func = pygwtf.models.taylorf2ecc.common._get_amplitude
-        time_to_coalescence_func = pygwtf.models.taylorf2ecc.common._get_time_to_coalescence
-        phi_f_fdot_func = pygwtf.models.taylorf2ecc.common._get_phi_f_fdot
+
+        if spin_only_waveform:
+            amp_func = pygwtf.models.taylorf3spin.common._get_amplitude
+            time_to_coalescence_func = pygwtf.models.taylorf3spin.common._get_time_to_coalescence
+            phi_f_fdot_func = pygwtf.models.taylorf3spin.common._get_phi_f_fdot
+        else:
+            amp_func = pygwtf.models.taylorf2ecc.common._get_amplitude
+            time_to_coalescence_func = pygwtf.models.taylorf2ecc.common._get_time_to_coalescence
+            phi_f_fdot_func = pygwtf.models.taylorf2ecc.common._get_phi_f_fdot
 
         # Response function 
         AET_TFs_func = pygwtf.response.transfer.get_AET_TFs 

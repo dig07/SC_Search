@@ -371,6 +371,7 @@ def setup_tf_grid(T,
     
     print(f"Number of time segments: {nT}")
 
+    # nT corresponds to the number of midpoints of this *grid*.
     t_grid = np.arange(nT+1)*dT # nT+1 as we want nT time segments, which means nT+1 time points
     # Frequency resolution 
     dF =f_min= (1/dT)
@@ -379,7 +380,7 @@ def setup_tf_grid(T,
     nF = int((f_max - f_min) / dF) + 1 # frequency bins per segment
     print(f"Number of frequency bins per segment: {nF}")
 
-    # Frequency grid (neglecting DC component)
+    # Frequency grid (neglecting DC component) (I think these are the *Central* frequencies of the bins, but need to check this)
     f_grid = np.arange(1,nF+1) * dF  # segment frequencies
     # Time grid
     print('NOTE: The time grid calculates the number of segments as int(T/dT), which means it rounds down the number of segments.')
@@ -428,7 +429,8 @@ def SFT_data(data,
         SFT_data[1,i,:] = np.fft.rfft(channel_2_segment_data*win)[1:]*dt 
         SFT_data[2,i,:] = np.fft.rfft(channel_3_segment_data*win)[1:]*dt 
 
-    return(SFT_data)
+        freqs_from_fft = np.fft.rfftfreq(np.sum((times >= start_time) & (times < end_time)), dt)
+    return(SFT_data,freqs_from_fft)
 
 
 
