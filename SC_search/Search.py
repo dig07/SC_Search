@@ -153,7 +153,7 @@ class Search:
             self._compute_analytic_psd()
 
         # Reshaping PSD for ingestion by the kernel which expects (nT, nF, 3) shape. 
-        self.psd_arr = self.psd_arr.transpose(1,2,0) #
+        self.psd_arr = self.psd_arr.transpose(1,2,0) 
 
         print(f"PSD shape: {self.psd_arr.shape}  |  Data shape: {self.data.shape}")
         print(f"PSD entirely positive: {np.all(self.psd_arr > 0)}")
@@ -228,9 +228,10 @@ class Search:
             # Ending index of dip
             idx_high = int(np.argmin(np.abs(self.f_seg - f_high)))
             # For all indexes in the dip, set the PSD to the value at the lower edge
-            if idx_high > idx_low:
-                self.psd_arr[:, idx_low:idx_high, :] = self.psd_arr[:, idx_low:idx_low + 1, :]
+            for k in range(idx_low, idx_high):
+                self.psd_arr[:, k, :] = self.psd_arr[:, idx_low, :]
 
+          
         print(f"PSD entirely positive: {np.all(self.psd_arr > 0)}")
 
     def inject_noise(self, gap_mask=None):
