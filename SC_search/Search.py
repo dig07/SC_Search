@@ -4,7 +4,11 @@ import os
 from .Noise import *
 from .Swarm_class import Semi_Coherent_Model
 import PySO
+
 import pygwtf 
+from pygwtf.models import TaylorT2Ecc, TaylorT3Spin
+from pygwtf.generator import AnalyticTimeFrequencyWaveform
+from pygwtf.response.orbits import generate_mojito_orbit_splines_resample
 
 from scipy.interpolate import CubicSpline
 
@@ -104,7 +108,7 @@ class Search:
         f_grid_key : str, optional
             Filename for the frequency grid.
         """
-        self.data = np.load(os.path.join(datafile_path, data_file_name))
+        self.data = np.load(os.path.join(datafile_path, data_file_name)) # shape (3, nT, nF)
         self.t_seg = np.load(os.path.join(datafile_path, t_grid_key))
         self.f_seg = np.load(os.path.join(datafile_path, f_grid_key))
 
@@ -120,6 +124,8 @@ class Search:
         print(f"Final f_grid has size: {self.nF}")
         print(f"Frequency range on TF grid: [{self.f_seg[0]:.6f}, {self.f_seg[-1]:.6f}]")
 
+        # Reshaping data for ingestion by the kenrel which expects (nT, nF, 3) shape. 
+        self.data = self.data.transpose(1,2,0) # shape (nT, nF, 3)
 
     def compute_psd(self, use_estimated_PSD=False, PSD_file_path="PSD_interpolator.npy"):
         """Build the PSD array.
@@ -145,6 +151,9 @@ class Search:
             self._load_estimated_psd(PSD_file_path)
         else:
             self._compute_analytic_psd()
+
+        # Reshaping PSD for ingestion by the kernel which expects (nT, nF, 3) shape. 
+        self.psd_arr = self.psd_arr.transpose(1,2,0) #
 
         print(f"PSD shape: {self.psd_arr.shape}  |  Data shape: {self.data.shape}")
         print(f"PSD entirely positive: {np.all(self.psd_arr > 0)}")
@@ -219,8 +228,8 @@ class Search:
             # Ending index of dip
             idx_high = int(np.argmin(np.abs(self.f_seg - f_high)))
             # For all indexes in the dip, set the PSD to the value at the lower edge
-            for k in range(idx_low, idx_high):
-                self.psd_arr[:, :, k] = self.psd_arr[:, :, idx_low]
+            if idx_high > idx_low:
+                self.psd_arr[:, idx_low:idx_high, :] = self.psd_arr[:, idx_low:idx_low + 1, :]
 
         print(f"PSD entirely positive: {np.all(self.psd_arr > 0)}")
 
@@ -242,7 +251,7 @@ class Search:
             kept = np.asarray(gap_mask)
             all_indices = np.arange(self.nT)
             dropped = np.setdiff1d(all_indices, kept)
-            self.data[:, dropped, :] = 0.0
+            self.data[dropped, :, :] = 0.0
 
     def setup_waveform_generator(self, mojito_orbit_filepath='./mojito_orbits.h5',
                                  use_GPU=True, fresnel_kernel_width=5, gap_mask=None,
@@ -273,53 +282,46 @@ class Search:
             If False, use a waveform model that includes both spin and eccentricity effects. (F2Ecc)  Defaults to True.
         """
 
+        # Positions of spacecraft (3,3,nT)
+        p = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath)
+
+        # Needs to transform this to (nT,3,3) for the gwtf kernel 
+        self.p = p.transpose(2,0,1)
+
         # Setup config that waveform generator needs
         config = {'nT':self.nT,
                   'nF':self.nF,
                   'dT':self.dT,
                   'dF':self.dF,
-                  'kernel_width':fresnel_kernel_width,
-                  'nparams':7}
+                  'kernel_width':fresnel_kernel_width}        
         
-        # Functions to pass to the kernel, these are the functions that the kernel will call at each SFT segment to generate the fresnel waveform
+        if use_GPU:
+            backend = 'gpu'
+        else:
+            backend = 'cpu'
+
+        print(f"Setting up waveform generator with {backend} backend...")
 
         if spin_only_waveform:
-            amp_func = pygwtf.models.taylorf3spin.common._get_amplitude
-            time_to_coalescence_func = pygwtf.models.taylorf3spin.common._get_time_to_coalescence
-            phi_f_fdot_func = pygwtf.models.taylorf3spin.common._get_phi_f_fdot
+            # No eccentricity, spin algined. 
+            wf_model_class = TaylorT3Spin
         else:
-            amp_func = pygwtf.models.taylorf2ecc.common._get_amplitude
-            time_to_coalescence_func = pygwtf.models.taylorf2ecc.common._get_time_to_coalescence
-            phi_f_fdot_func = pygwtf.models.taylorf2ecc.common._get_phi_f_fdot
-
-        # Response function 
-        AET_TFs_func = pygwtf.response.transfer.get_AET_TFs 
+            # Eccentricity only no spin. 
+            wf_model_class = TaylorT2Ecc
+        
+        self.waveform_generator = AnalyticTimeFrequencyWaveform(model_class=wf_model_class, 
+                                                                config=config,
+                                                                tdi_type=2,
+                                                                backend=backend,
+                                                                channels=self.data,
+                                                                spacecraft_orbits=self.p)
 
         # This returns a function which is the kernel that directly takes in waveform parameters and outputs search statistics.         
-        self.statistic_generator = pygwtf.fresnel.kernel.analytic_kernel_constructor(config,
-                                                  amp_func,
-                                                  time_to_coalescence_func,
-                                                  phi_f_fdot_func,
-                                                  AET_TFs_func,
-                                                  tdi_type=2,
-                                                  gpu=use_GPU,
-                                                  compute_statistic=True)
+        # self.statistic_generator = self.waveform_generator.statistic_kernel
         
         # Waveform generator object, fills in array provided to it with waveform, useful for debugging, constructed using the same methods as the statistic generator 
-        self.debugging_waveform_generator = pygwtf.fresnel.kernel.analytic_kernel_constructor(config,
-                                            amp_func,
-                                            time_to_coalescence_func,
-                                            phi_f_fdot_func,
-                                            AET_TFs_func,
-                                            tdi_type=2,
-                                            gpu=use_GPU,
-                                            compute_statistic=False)
+        # self.debugging_waveform_generator = self.waveform_generator.waveform_kernel
         
-        # Positions of spacecraft (3,3,nT)
-        p = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath)
-
-        # Needs to transform this to (nT,3,3) for the gwtf kernel #TODO: Not sure about the order of this transposing
-        self.p = p.transpose(2,0,1)
 
         # if gap_mask is not None:
         #     self.waveform_generator.apply_segment_mask(gap_mask)
@@ -347,7 +349,7 @@ class Search:
             Positions of 3 spacecraft in SSB frame at central SFT times. 
         """
         
-        p = pygwtf.response.orbits.generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath, 
+        p = generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath, 
                                                               t_sft=self.t_seg)
 
         return(p)
@@ -385,19 +387,19 @@ class Search:
 
         Parameters
         ----------
-        psd : ndarray, shape (3, nT, nF)
+        psd : ndarray, shape (nT, nF, 3)
             One-sided PSD for each channel and time segment.
 
         Returns
         -------
-        noise : ndarray, shape (3, nT, nF), complex
+        noise : ndarray, shape (nT, nF, 3), complex
             Frequency-domain noise realisation.
         """
-        noise = np.zeros((3, self.nT, self.nF), dtype=complex)
+        noise = np.zeros((self.nT, self.nF, 3), dtype=complex)
 
         for t_idx in range(self.nT):
             for ch in range(3):
-                noise[ch, t_idx, :] = noise_realization(psd[ch, t_idx, :], self.dT)
+                noise[t_idx, :, ch] = noise_realization(psd[t_idx, :, ch], self.dT)
 
         return noise
 
