@@ -14,6 +14,7 @@ from scipy.interpolate import CubicSpline
 
 from ldc.lisa.noise import get_noise_model
 
+from lisaconstants import c as clight
 
 # Default frequency bands where the PSD is flattened to suppress
 # spectral artefacts (e.g. transfer-function zeroes).
@@ -255,6 +256,7 @@ class Search:
             self.data[dropped, :, :] = 0.0
 
     def setup_waveform_generator(self, mojito_orbit_filepath='./mojito_orbits.h5',
+                                 mojito_ltt_filepath='./mojito_ltts.h5',
                                  use_GPU=True, fresnel_kernel_width=5, gap_mask=None,
                                  spin_only_waveform=True):
         """Initialise the waveform generator. 
@@ -270,6 +272,8 @@ class Search:
         ----------
         mojito_orbit_filepath : str, optional
             Containing ESA orbits for the spacecraft (used to setup the response function).  Defaults to './mojito_orbits.h5'.
+        mojito_ltt_filepath : str, optional
+            Containing ESA light travel times for the spacecraft (used to setup the response function).
         use_GPU : bool, optional
             Whether to run the waveform model on CUDA.  Defaults to True.
         fresnel_kernel_width : int, optional
@@ -284,7 +288,9 @@ class Search:
         """
 
         # Positions of spacecraft (3,3,nT)
-        p = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath)
+        p, Ls = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath, mojito_ltt_filepath=mojito_ltt_filepath)
+
+        self.Ls = Ls*clight # Convert to seconds for the waveform generator.
 
         # Needs to transform this to (nT,3,3) for the gwtf kernel 
         self.p = p.transpose(2,0,1)
@@ -315,7 +321,8 @@ class Search:
                                                                 tdi_type=2,
                                                                 backend=backend,
                                                                 channels=self.data,
-                                                                spacecraft_orbits=self.p)
+                                                                spacecraft_orbits=self.p,
+                                                                spacecraft_ltts=self.Ls)
 
         # This returns a function which is the kernel that directly takes in waveform parameters and outputs search statistics.         
         # self.statistic_generator = self.waveform_generator.statistic_kernel
@@ -327,7 +334,7 @@ class Search:
         # if gap_mask is not None:
         #     self.waveform_generator.apply_segment_mask(gap_mask)
 
-    def setup_response_function(self,mojito_orbit_filepath='./mojito_orbits.h5'):
+    def setup_response_function(self,mojito_orbit_filepath='./mojito_orbits.h5', mojito_ltt_filepath='./mojito_ltts.h5'):
         """
         Setup the LISA response funtion. 
 
@@ -343,17 +350,22 @@ class Search:
         ----------
         mojito_orbit_filepath : str, optional
             Containing ESA orbits.  Defaults to './mojito_orbits.h5'.
+        mojito_ltt_filepath : str, optional
+            Containing ESA light travel times for the spacecraft (used to setup the response function).  Defaults to './mojito_ltts.h5'.
 
         Returns
         -------
         p : array of shape (3,3,nT)
             Positions of 3 spacecraft in SSB frame at central SFT times. 
+        Ls : array of shape (nT,3)
+            Light travel times for each link at central SFT times.
         """
         
-        p = generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath, 
+        p, Ls = generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath, 
+                                                    mojito_ltt_filepath=mojito_ltt_filepath,
                                                               t_sft=self.t_seg)
 
-        return(p)
+        return(p,Ls)
 
     def initialize_and_run_search(self):
         """Run the hierarchical semi-coherent PSO search.
