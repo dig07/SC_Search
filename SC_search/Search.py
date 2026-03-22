@@ -379,6 +379,8 @@ class Search:
                 self.prior_bounds,
                 self.data,
                 self.waveform_generator,
+                self.nT,
+                self.psd_arr,
             )
             for segment_number in self.segment_ladder
         ]

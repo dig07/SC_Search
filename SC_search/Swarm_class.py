@@ -22,23 +22,30 @@ class Semi_Coherent_Model(PySO.Model):
     data : ndarray
         The time-frequency data array (shape ``(3, nT, nF)``).
     waveform_generator : object
-        Waveform generator instance (e.g. ``TaylorF2EccTF``) exposing a
-        ``get_log_likelihood`` method.
+        Waveform generator instance (e.g. ``TaylorF2EccTF``)
+    nT: int
+        Number of time bins in the data (used for pre-allocating arrays for the GPU kernel)
+    psd: array
+        Power spectral density array (shape (nT,nF,3)) for the data.  Used for computing the search statistics. 
     constant_final_orbital_phase : float, optional
         Fixed value used for the final orbital phase.  Defaults to 0.
     constant_distance : float, optional
         Fixed luminosity distance in parsecs.  Defaults to 1e8.
+
     """
 
     names = [
         "Mc",
-        "q",
+        "eta",
         "cosinc",
-        "e0",
+        # "D",
         "f0",
+        "s1",
+        "s2",
+        #phicoal,
+        "psi",
         "lam",
         "beta",
-        "psi",
     ]
 
     def __init__(
@@ -47,6 +54,8 @@ class Semi_Coherent_Model(PySO.Model):
         priors,
         data,
         waveform_generator,
+        nT, 
+        psd,
         constant_final_orbital_phase=0,
         constant_distance=100.0e6,
     ):
@@ -56,6 +65,8 @@ class Semi_Coherent_Model(PySO.Model):
         self.waveform_generator = waveform_generator
         self.constant_final_orbital_phase = constant_final_orbital_phase
         self.constant_distance = constant_distance
+        self.nT = nT
+        self.psd = psd 
 
     def objective_function(self, params):
         """Evaluate the semi-coherent search statistic (upsilon) for a batch of particles.
@@ -73,24 +84,40 @@ class Semi_Coherent_Model(PySO.Model):
         """
         batch_size = params["Mc"].shape[0]
 
-        loglike = self.waveform_generator.get_log_likelihood(
-            params["Mc"],
-            params["q"],
-            params["cosinc"],
-            params["e0"],
-            [self.constant_distance] * batch_size,
-            params["f0"],
-            [self.constant_final_orbital_phase] * batch_size,
-            params["lam"],
-            params["beta"],
-            params["psi"],
-            True,
-            self.segment_number,
-        )
+
+
+        # Transform from Mc, eta to M, eta. 
+
+        M = params["Mc"] / (params["eta"] ** (3 / 5))
+
+        wf_parameters = np.array([M, 
+                                params["eta"], 
+                                params["cosinc"],
+                                [self.constant_distance] * batch_size,
+                                params["f0"], 
+                                params["s1"], 
+                                params["s2"], 
+                                [self.constant_final_orbital_phase] * batch_size]).T
+        
+        
+        response_parameters = np.array([params["cosinc"],
+                                        params["psi"],
+                                        params["lam"],
+                                        params["beta"]]).T
+                
+        statistic_array = np.zeros((batch_size,self.nT,2),dtype=complex)
+
+        search_statistics = self.waveform_generator(parameters=wf_parameters, 
+                                    channels=self.data,
+                                    psds=self.psd,
+                                    parameters_response=response_parameters,
+                                    out = statistic_array,
+                                    compute_statistic=True,
+                                    N_seg = self.segment_number)
 
         # CuPy arrays expose .get(); NumPy arrays do not.
         try:
-            return loglike.get()
+            return search_statistics.get()
         except AttributeError:
-            return loglike
+            return search_statistics
         
