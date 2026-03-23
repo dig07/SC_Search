@@ -126,7 +126,7 @@ class Search:
         print(f"Frequency range on TF grid: [{self.f_seg[0]:.6f}, {self.f_seg[-1]:.6f}]")
 
         # Reshaping data for ingestion by the kenrel which expects (nT, nF, 3) shape. 
-        self.data = self.data.transpose(1,2,0) # shape (nT, nF, 3)
+        self.data = self.data.transpose(1,2,0).copy() # shape (nT, nF, 3)
 
     def compute_psd(self, use_estimated_PSD=False, PSD_file_path="PSD_interpolator.npy"):
         """Build the PSD array.
@@ -154,7 +154,7 @@ class Search:
             self._compute_analytic_psd()
 
         # Reshaping PSD for ingestion by the kernel which expects (nT, nF, 3) shape. 
-        self.psd_arr = self.psd_arr.transpose(1,2,0) 
+        self.psd_arr = self.psd_arr.transpose(1,2,0).copy()
 
         print(f"PSD shape: {self.psd_arr.shape}  |  Data shape: {self.data.shape}")
         print(f"PSD entirely positive: {np.all(self.psd_arr > 0)}")
@@ -293,7 +293,7 @@ class Search:
         self.Ls = Ls*clight # Convert to seconds for the waveform generator.
 
         # Needs to transform this to (nT,3,3) for the gwtf kernel 
-        self.p = p.transpose(2,0,1)
+        self.p = p.transpose(2,0,1).copy()
 
         # Setup config that waveform generator needs
         config = {'nT':self.nT,
@@ -367,11 +367,19 @@ class Search:
 
         return(p,Ls)
 
-    def initialize_and_run_search(self):
+    def initialize_and_run_search(self, use_GPU=True,
+                                  total_number_of_particles=100000, batch_size=10000):
         """Run the hierarchical semi-coherent PSO search.
 
         Creates a ``Semi_Coherent_Model`` for each rung in the segment
         ladder and passes them to ``PySO.HierarchicalSwarmHandler``.
+
+        
+        Parameters
+        ----------
+        use_GPU : bool, optional
+            Whether to run the search on CUDA.  Defaults to True.
+
         """
         self.Semi_Coherent_classes = [
             Semi_Coherent_Model(
@@ -381,6 +389,9 @@ class Search:
                 self.waveform_generator,
                 self.nT,
                 self.psd_arr,
+                use_GPU=use_GPU,
+                batch_size=batch_size,
+                total_number_of_particles=total_number_of_particles,
             )
             for segment_number in self.segment_ladder
         ]

@@ -1,5 +1,6 @@
 import numpy as np
 import PySO
+from math import ceil 
 
 
 class Semi_Coherent_Model(PySO.Model):
@@ -26,11 +27,19 @@ class Semi_Coherent_Model(PySO.Model):
     nT: int
         Number of time bins in the data (used for pre-allocating arrays for the GPU kernel)
     psd: array
-        Power spectral density array (shape (nT,nF,3)) for the data.  Used for computing the search statistics. 
+        Power spectral density array (shape (nT,nF,3)) for the data.  Used for computing the search statistics.
+    total_number_of_particles : int, optional
+        Total number of particles to be evaluated in the hierarchical PySO.  Defaults to 100000. 
+    batch_size : int, 
+        Batch size to use for the GPU-accelerated objective function.  Defaults to 10000.
     constant_final_orbital_phase : float, optional
         Fixed value used for the final orbital phase.  Defaults to 0.
     constant_distance : float, optional
         Fixed luminosity distance in parsecs.  Defaults to 1e8.
+    use_GPU : bool, optional
+        Whether to use the GPU-accelerated version of the objective function.  Defaults to False
+
+    
 
     """
 
@@ -56,8 +65,11 @@ class Semi_Coherent_Model(PySO.Model):
         waveform_generator,
         nT, 
         psd,
+        total_number_of_particles = 100000,
+        batch_size = 10000,
         constant_final_orbital_phase=0,
         constant_distance=100.0e6,
+        use_GPU = False,
     ):
         self.segment_number = segment_number
         self.bounds = priors
@@ -66,7 +78,26 @@ class Semi_Coherent_Model(PySO.Model):
         self.constant_final_orbital_phase = constant_final_orbital_phase
         self.constant_distance = constant_distance
         self.nT = nT
-        self.psd = psd 
+        self.psd = psd
+        self.batch_size = batch_size
+
+
+        if use_GPU:
+            import cupy as cp
+            self.xp = cp
+        else:
+            self.xp = np
+
+        self.results_array = self.xp.zeros((total_number_of_particles,), dtype=np.float64) # Pre-allocate array for results
+
+        self.total_number_of_particles = total_number_of_particles
+
+
+        # # cieling operator to determine the number of batches needed to process all particles
+        # self.num_batches = ceil(total_number_of_particles / batch_size)
+
+        # print('Number of function evaluation batches:', self.num_batches)
+        # print('Number of particles per batch:', self.batch_size)
 
     def objective_function(self, params):
         """Evaluate the semi-coherent search statistic (upsilon) for a batch of particles.
@@ -82,42 +113,48 @@ class Semi_Coherent_Model(PySO.Model):
         statistic : ndarray
             Search statistic value for each particle.
         """
-        batch_size = params["Mc"].shape[0]
-
-
-
         # Transform from Mc, eta to M, eta. 
+        M = params["Mc"] / (params["eta"] ** (3 / 5))   
+        nparticles = params["Mc"].shape[0]
 
-        M = params["Mc"] / (params["eta"] ** (3 / 5))
+        num_batches = ceil(nparticles / self.batch_size)
 
-        wf_parameters = np.array([M, 
-                                params["eta"], 
-                                params["cosinc"],
-                                [self.constant_distance] * batch_size,
-                                params["f0"], 
-                                params["s1"], 
-                                params["s2"], 
-                                [self.constant_final_orbital_phase] * batch_size]).T
-        
-        
-        response_parameters = np.array([params["cosinc"],
-                                        params["psi"],
-                                        params["lam"],
-                                        params["beta"]]).T
-                
-        statistic_array = np.zeros((batch_size,self.nT,2),dtype=complex)
+        # Basically trigger recompilation, we should make sure this doenst happen too much. 
+        if M.shape[0] != self.results_array.shape[0]:
+            self.results_array = self.xp.zeros((M.shape[0],), dtype=np.float64) # Re-allocate results array if number of particles has changed
 
-        search_statistics = self.waveform_generator(parameters=wf_parameters, 
-                                    channels=self.data,
-                                    psds=self.psd,
-                                    parameters_response=response_parameters,
-                                    out = statistic_array,
-                                    compute_statistic=True,
-                                    N_seg = self.segment_number)
+        # Loop over batches of particles, evaluating the search statistic for each batch and storing the results in the pre-allocated array.
+        for batch_index in range(num_batches):
+            
+            batch_start = batch_index * self.batch_size
+            batch_end = min((batch_index + 1) * self.batch_size, self.total_number_of_particles)
+
+            wf_parameters = self.xp.array([M[batch_start:batch_end], 
+                                    params["eta"][batch_start:batch_end], 
+                                    params["cosinc"][batch_start:batch_end],
+                                    [self.constant_distance] * int(batch_end - batch_start),
+                                    params["f0"][batch_start:batch_end], 
+                                    params["s1"][batch_start:batch_end], 
+                                    params["s2"][batch_start:batch_end], 
+                                    [self.constant_final_orbital_phase] * int(batch_end - batch_start)]).T
+            
+            
+            response_parameters = self.xp.array([params["cosinc"][batch_start:batch_end],
+                                            params["psi"][batch_start:batch_end],
+                                            params["lam"][batch_start:batch_end],
+                                            params["beta"][batch_start:batch_end]]).T
+                    
+            self.results_array[batch_start:batch_end] = self.waveform_generator(parameters=wf_parameters, 
+                                        channels=self.data,
+                                        psds=self.psd,
+                                        parameters_response=response_parameters,
+                                        out = None,
+                                        compute_statistic=True,
+                                        N_seg = self.segment_number)
 
         # CuPy arrays expose .get(); NumPy arrays do not.
         try:
-            return search_statistics.get()
+            return self.results_array.get()
         except AttributeError:
-            return search_statistics
+            return self.results_array
         
