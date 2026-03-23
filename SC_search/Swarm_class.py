@@ -3,6 +3,11 @@ import PySO
 from math import ceil 
 
 
+
+from time import perf_counter
+
+
+
 class Semi_Coherent_Model(PySO.Model):
     """PySO model for a single segment of the semi-coherent search ladder.
 
@@ -73,12 +78,10 @@ class Semi_Coherent_Model(PySO.Model):
     ):
         self.segment_number = segment_number
         self.bounds = priors
-        self.data = data
         self.waveform_generator = waveform_generator
         self.constant_final_orbital_phase = constant_final_orbital_phase
         self.constant_distance = constant_distance
         self.nT = nT
-        self.psd = psd
         self.batch_size = batch_size
 
 
@@ -87,7 +90,10 @@ class Semi_Coherent_Model(PySO.Model):
             self.xp = cp
         else:
             self.xp = np
-
+        
+        # Move data and psd to the selected backend (NumPy or CuPy) once, so that we don't have to keep transferring them for each batch of particles in the objective function.
+        self.data = self.xp.asarray(data)
+        self.psd = self.xp.asarray(psd)
         self.results_array = self.xp.zeros((total_number_of_particles,), dtype=np.float64) # Pre-allocate array for results
 
         self.total_number_of_particles = total_number_of_particles
@@ -113,37 +119,48 @@ class Semi_Coherent_Model(PySO.Model):
         statistic : ndarray
             Search statistic value for each particle.
         """
-        # Transform from Mc, eta to M, eta. 
-        M = params["Mc"] / (params["eta"] ** (3 / 5))   
         nparticles = params["Mc"].shape[0]
+
+        # Move particle arrays to the selected backend once (NumPy or CuPy).
+        eta = self.xp.asarray(params["eta"])
+        cosinc = self.xp.asarray(params["cosinc"])
+        f0 = self.xp.asarray(params["f0"])
+        s1 = self.xp.asarray(params["s1"])
+        s2 = self.xp.asarray(params["s2"])
+        psi = self.xp.asarray(params["psi"])
+        lam = self.xp.asarray(params["lam"])
+        beta = self.xp.asarray(params["beta"])
+
+
+        M = self.xp.asarray(params["Mc"]) / (eta ** (3 / 5))
 
         num_batches = ceil(nparticles / self.batch_size)
 
+        distance = self.xp.full((nparticles,), self.constant_distance, dtype=M.dtype)
+
+        final_orbital_phase = self.xp.full((nparticles,), self.constant_final_orbital_phase, dtype=M.dtype)
+
+        wf_parameters_all = self.xp.column_stack(
+            (M, eta, cosinc, distance, f0, s1, s2, final_orbital_phase)
+        )
+        response_parameters_all = self.xp.column_stack((cosinc, psi, lam, beta))
+
         # Basically trigger recompilation, we should make sure this doenst happen too much. 
         if M.shape[0] != self.results_array.shape[0]:
+            print("Recompiling for a new number of particles:", M.shape[0])
             self.results_array = self.xp.zeros((M.shape[0],), dtype=np.float64) # Re-allocate results array if number of particles has changed
 
         # Loop over batches of particles, evaluating the search statistic for each batch and storing the results in the pre-allocated array.
         for batch_index in range(num_batches):
             
-            batch_start = batch_index * self.batch_size
-            batch_end = min((batch_index + 1) * self.batch_size, self.total_number_of_particles)
+            # t_0 = perf_counter()  
 
-            wf_parameters = self.xp.array([M[batch_start:batch_end], 
-                                    params["eta"][batch_start:batch_end], 
-                                    params["cosinc"][batch_start:batch_end],
-                                    [self.constant_distance] * int(batch_end - batch_start),
-                                    params["f0"][batch_start:batch_end], 
-                                    params["s1"][batch_start:batch_end], 
-                                    params["s2"][batch_start:batch_end], 
-                                    [self.constant_final_orbital_phase] * int(batch_end - batch_start)]).T
-            
-            
-            response_parameters = self.xp.array([params["cosinc"][batch_start:batch_end],
-                                            params["psi"][batch_start:batch_end],
-                                            params["lam"][batch_start:batch_end],
-                                            params["beta"][batch_start:batch_end]]).T
-                    
+            batch_start = batch_index * self.batch_size
+            batch_end = min((batch_index + 1) * self.batch_size, nparticles)
+
+            wf_parameters = wf_parameters_all[batch_start:batch_end]
+            response_parameters = response_parameters_all[batch_start:batch_end]
+    
             self.results_array[batch_start:batch_end] = self.waveform_generator(parameters=wf_parameters, 
                                         channels=self.data,
                                         psds=self.psd,
@@ -151,6 +168,9 @@ class Semi_Coherent_Model(PySO.Model):
                                         out = None,
                                         compute_statistic=True,
                                         N_seg = self.segment_number)
+
+            # t_1 = perf_counter()
+            # print(f"Time taken to evaluate objective function: {t_1 - t_0:.2f} seconds")
 
         # CuPy arrays expose .get(); NumPy arrays do not.
         try:
