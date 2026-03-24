@@ -61,6 +61,10 @@ class Search:
         ``.npy`` files.  Defaults to ``'.'``.
     data_file_name : str, optional
         Filename of the SFT data array.  Defaults to ``'data.npy'``.
+    t_grid_key : str, optional
+        Filename for the time-segment grid.  Defaults to ``'t_grid.npy'``.
+    f_grid_key : str, optional
+        Filename for the frequency grid.  Defaults to ``'f_grid.npy'``.
     """
 
     def __init__(
@@ -73,6 +77,8 @@ class Search:
         PySO_kwargs,
         datafile_path=".",
         data_file_name="data.npy",
+        t_grid_key="t_grid.npy",
+        f_grid_key="f_grid.npy",
     ):
         # Store search configuration
         self.frequency_series_dict = time_frequency_series_dict
@@ -83,7 +89,7 @@ class Search:
         self.PySO_kwargs = PySO_kwargs
 
         # Load data and build time-frequency grid
-        self._load_data_and_generate_tf_grid(data_file_name, datafile_path)
+        self._load_data_and_generate_tf_grid(data_file_name, datafile_path, t_grid_key=t_grid_key, f_grid_key=f_grid_key)
 
 
     def _load_data_and_generate_tf_grid(

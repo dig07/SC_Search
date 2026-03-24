@@ -5,7 +5,7 @@ from math import ceil
 
 
 from time import perf_counter
-
+from numba import cuda 
 
 
 class Semi_Coherent_Model(PySO.Model):
@@ -71,7 +71,6 @@ class Semi_Coherent_Model(PySO.Model):
         nT, 
         psd,
         total_number_of_particles = 100000,
-        batch_size = 10000,
         constant_final_orbital_phase=0,
         constant_distance=100.0e6,
         use_GPU = False,
@@ -82,7 +81,6 @@ class Semi_Coherent_Model(PySO.Model):
         self.constant_final_orbital_phase = constant_final_orbital_phase
         self.constant_distance = constant_distance
         self.nT = nT
-        self.batch_size = batch_size
 
 
         if use_GPU:
@@ -98,12 +96,7 @@ class Semi_Coherent_Model(PySO.Model):
 
         self.total_number_of_particles = total_number_of_particles
 
-
-        # # cieling operator to determine the number of batches needed to process all particles
-        # self.num_batches = ceil(total_number_of_particles / batch_size)
-
-        # print('Number of function evaluation batches:', self.num_batches)
-        # print('Number of particles per batch:', self.batch_size)
+        self.statistic_array = self.xp.zeros((total_number_of_particles,)) # self.xp.zeros((self.batch_size,), dtype=np.float64) # Pre-allocate array for the search statistic values for each batch of particles
 
     def objective_function(self, params):
         """Evaluate the semi-coherent search statistic (upsilon) for a batch of particles.
@@ -119,6 +112,9 @@ class Semi_Coherent_Model(PySO.Model):
         statistic : ndarray
             Search statistic value for each particle.
         """
+
+        # t_0 = perf_counter()  
+        
         nparticles = params["Mc"].shape[0]
 
         # Move particle arrays to the selected backend once (NumPy or CuPy).
@@ -134,8 +130,6 @@ class Semi_Coherent_Model(PySO.Model):
 
         M = self.xp.asarray(params["Mc"]) / (eta ** (3 / 5))
 
-        num_batches = ceil(nparticles / self.batch_size)
-
         distance = self.xp.full((nparticles,), self.constant_distance, dtype=M.dtype)
 
         final_orbital_phase = self.xp.full((nparticles,), self.constant_final_orbital_phase, dtype=M.dtype)
@@ -143,38 +137,24 @@ class Semi_Coherent_Model(PySO.Model):
         wf_parameters_all = self.xp.column_stack(
             (M, eta, cosinc, distance, f0, s1, s2, final_orbital_phase)
         )
-        response_parameters_all = self.xp.column_stack((cosinc, psi, lam, beta))
+        response_parameters_all = self.xp.column_stack((cosinc, psi, lam, beta)) 
 
-        # Basically trigger recompilation, we should make sure this doenst happen too much. 
-        if M.shape[0] != self.results_array.shape[0]:
-            print("Recompiling for a new number of particles:", M.shape[0])
-            self.results_array = self.xp.zeros((M.shape[0],), dtype=np.float64) # Re-allocate results array if number of particles has changed
+        if  self.statistic_array.shape[0] != nparticles:
+            print("Allocating output array for the GPU kernel with batch size:", self.batch_size)
+            self.statistic_array = self.xp.zeros((nparticles,), dtype=np.float64) # Allocate array for the search statistic values for each batch of particles if it hasn't been allocated yet or if the batch size has changed
 
-        # Loop over batches of particles, evaluating the search statistic for each batch and storing the results in the pre-allocated array.
-        for batch_index in range(num_batches):
-            
-            # t_0 = perf_counter()  
-
-            batch_start = batch_index * self.batch_size
-            batch_end = min((batch_index + 1) * self.batch_size, nparticles)
-
-            wf_parameters = wf_parameters_all[batch_start:batch_end]
-            response_parameters = response_parameters_all[batch_start:batch_end]
-    
-            self.results_array[batch_start:batch_end] = self.waveform_generator(parameters=wf_parameters, 
+        self.waveform_generator(parameters=wf_parameters_all, 
                                         channels=self.data,
                                         psds=self.psd,
-                                        parameters_response=response_parameters,
+                                        parameters_response=response_parameters_all,
                                         out = None,
                                         compute_statistic=True,
+                                        search_statistic = self.statistic_array,
                                         N_seg = self.segment_number)
-
-            # t_1 = perf_counter()
-            # print(f"Time taken to evaluate objective function: {t_1 - t_0:.2f} seconds")
-
-        # CuPy arrays expose .get(); NumPy arrays do not.
+        # # CuPy arrays expose .get(); NumPy arrays do not.
         try:
-            return self.results_array.get()
-        except AttributeError:
-            return self.results_array
+            return self.statistic_array.get()
         
+        except AttributeError:
+            return self.statistic_array
+    
