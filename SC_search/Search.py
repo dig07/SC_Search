@@ -396,7 +396,6 @@ class Search:
                 self.nT,
                 self.psd_arr,
                 use_GPU=use_GPU,
-                batch_size=batch_size,
                 total_number_of_particles=total_number_of_particles,
             )
             for segment_number in self.segment_ladder

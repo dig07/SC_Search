@@ -140,7 +140,7 @@ class Semi_Coherent_Model(PySO.Model):
         response_parameters_all = self.xp.column_stack((cosinc, psi, lam, beta)) 
 
         if  self.statistic_array.shape[0] != nparticles:
-            print("Allocating output array for the GPU kernel with batch size:", self.batch_size)
+            print("Re-Allocating output array for the GPU kernel with batch size:", nparticles)
             self.statistic_array = self.xp.zeros((nparticles,), dtype=np.float64) # Allocate array for the search statistic values for each batch of particles if it hasn't been allocated yet or if the batch size has changed
 
         self.waveform_generator(parameters=wf_parameters_all, 
