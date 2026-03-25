@@ -50,7 +50,7 @@ class Semi_Coherent_Model(PySO.Model):
 
     names = [
         "Mc",
-        "eta",
+        "q",
         "cosinc",
         # "D",
         "f0",
@@ -88,7 +88,6 @@ class Semi_Coherent_Model(PySO.Model):
             self.xp = cp
         else:
             self.xp = np
-        
         # Move data and psd to the selected backend (NumPy or CuPy) once, so that we don't have to keep transferring them for each batch of particles in the objective function.
         self.data = self.xp.asarray(data)
         self.psd = self.xp.asarray(psd)
@@ -97,6 +96,9 @@ class Semi_Coherent_Model(PySO.Model):
         self.total_number_of_particles = total_number_of_particles
 
         self.statistic_array = self.xp.zeros((total_number_of_particles,)) # self.xp.zeros((self.batch_size,), dtype=np.float64) # Pre-allocate array for the search statistic values for each batch of particles
+
+        self._wf_params = self.xp.zeros((total_number_of_particles, 8), dtype=np.float64) 
+        self._resp_params = self.xp.zeros((total_number_of_particles, 4), dtype=np.float64)
 
     def objective_function(self, params):
         """Evaluate the semi-coherent search statistic (upsilon) for a batch of particles.
@@ -118,7 +120,8 @@ class Semi_Coherent_Model(PySO.Model):
         nparticles = params["Mc"].shape[0]
 
         # Move particle arrays to the selected backend once (NumPy or CuPy).
-        eta = self.xp.asarray(params["eta"])
+        Mc = self.xp.asarray(params["Mc"])
+        q = self.xp.asarray(params["q"])
         cosinc = self.xp.asarray(params["cosinc"])
         f0 = self.xp.asarray(params["f0"])
         s1 = self.xp.asarray(params["s1"])
@@ -127,26 +130,36 @@ class Semi_Coherent_Model(PySO.Model):
         lam = self.xp.asarray(params["lam"])
         beta = self.xp.asarray(params["beta"])
 
+        M = Mc * (q / (1 + q)**2)**(-3/5)
 
-        M = self.xp.asarray(params["Mc"]) / (eta ** (3 / 5))
+        eta = (Mc / M)**(5/3)
+        
+        # Subset to the number of particles in the current batch.  This way we can keep the GPU kernel's output array allocated to the maximum batch size, and just fill it with the current batch's results for each call to the objective function.
+        wf_params = self._wf_params[:nparticles]
+        resp_params = self._resp_params[:nparticles]
 
-        distance = self.xp.full((nparticles,), self.constant_distance, dtype=M.dtype)
+        wf_params[:, 0] = M
+        wf_params[:, 1] = eta
+        wf_params[:, 2] = cosinc
+        wf_params[:, 3] = self.constant_distance
+        wf_params[:, 4] = f0
+        wf_params[:, 5] = s1
+        wf_params[:, 6] = s2
+        wf_params[:, 7] = self.constant_final_orbital_phase
 
-        final_orbital_phase = self.xp.full((nparticles,), self.constant_final_orbital_phase, dtype=M.dtype)
-
-        wf_parameters_all = self.xp.column_stack(
-            (M, eta, cosinc, distance, f0, s1, s2, final_orbital_phase)
-        )
-        response_parameters_all = self.xp.column_stack((cosinc, psi, lam, beta)) 
+        resp_params[:, 0] = cosinc
+        resp_params[:, 1] = psi
+        resp_params[:, 2] = lam
+        resp_params[:, 3] = beta
 
         if  self.statistic_array.shape[0] != nparticles:
             print("Re-Allocating output array for the GPU kernel with batch size:", nparticles)
             self.statistic_array = self.xp.zeros((nparticles,), dtype=np.float64) # Allocate array for the search statistic values for each batch of particles if it hasn't been allocated yet or if the batch size has changed
 
-        self.waveform_generator(parameters=wf_parameters_all, 
+        self.waveform_generator(parameters=wf_params, 
                                         channels=self.data,
                                         psds=self.psd,
-                                        parameters_response=response_parameters_all,
+                                        parameters_response=resp_params,
                                         out = None,
                                         compute_statistic=True,
                                         search_statistic = self.statistic_array,
