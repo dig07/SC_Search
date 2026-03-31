@@ -1,300 +1,441 @@
-import numpy as np 
-import matplotlib.pyplot as plt
-import pandas as pd
+import numpy as np
 import os
 
 from .Noise import *
 from .Swarm_class import Model_inference
-import PySO
+ 
+from pygwtf.models import TaylorT2Ecc, TaylorT3Spin
+from pygwtf.generator import AnalyticTimeFrequencyWaveform
+from pygwtf.response.orbits import generate_mojito_orbit_splines_resample
+
 from scipy.interpolate import CubicSpline
 
 from ldc.lisa.noise import get_noise_model
 
-from SmBBHTF.waveforms.time_frequency import TaylorF2EccTF
+from lisaconstants import c as clight
 
-from nessai.plot import corner_plot
 from nessai.flowsampler import FlowSampler
 from nessai.utils import setup_logger
 
+# Default frequency bands where the PSD is flattened to suppress
+# spectral artefacts (e.g. transfer-function zeroes).
+DEFAULT_PSD_CLIP_BANDS = [
+    (0.029, 0.031),
+    (0.059, 0.061),
+    (0.0897, 0.0902),
+]
+
+
 class Inference:
-    def __init__(self, 
-            time_frequency_series_dict, 
-            prior_bounds,
-            sampler = 'nessai',
-            sampler_kwargs = {},
-            data_file_name = 'data.npy',
-            use_GPU = True,
-            fresnel_kernel_width=5,
-            use_estimated_PSD = False,
-            PSD_file_path = 'PSD_interpolator.npy',
-            generate_noise_realisation = False,
-            gap_mask = None,
-            outdir = './output/',
-            segment = None):
-                 
-        '''
-        Initializes a new instance of the Inference class.
+    """Inference for slowly-chirping signals in LISA data.
 
-        Parameters:
-            time_frequency_series_dict (dict): A dictionary containing time-frequency series data. Also contains information about the LISA mission such as
-                time of observation etc. 
-            prior_bounds (list): A list of prior bounds for the search
-            sampler (str, optional):  Name of sampler to be used. Defaults to 'nessai'.
-            sampler_kwargs (dict): A dictionary containing the sampler keyword arguments.
-            data_file_name (str, optional): The name of the file containing the data to be searched over.
-            use_GPU (boolean, optional): Wether to use GPU for the search, defaults to true.
-            fresnel_kernel_width (int, optional): Width of fresnel kernel used for summation, defaults to 5
-            noise_only_injection (bool, optional): A flag indicating whether to inject noise only. Defaults to False.  
-            use_estimated_PSD (str, optional): A flag to let the user load in
-                an estimated PSD, the estimated PSD is either assumed to be in
-                the format (3,#T,#F) OR an interpolator. #T is the number of
-                time points used to estimate the PSD, #F is the number of
-                frequencies. We assume no interpolation in time (sorr I have explained this badly)
-            PSD_file_path (str, optional): The path to the file containing the
-                estimated PSD. Defaults to 'PSD_interpolator.npy'.
-            generate_noise_realisation (bool, optional): A flag indicating
-                whether to generate a noise realization. Defaults to False.
-                NOTE: THIS ASSUMES THE DATA WE ARE LOADING IN IS NOISE FREE !!!!!!
-            gap_mask (bool or Arraylike, optional): A flag indicating where the
-                data is gapped. When ArrayLike, it is an array mask for the coloumns
-                out of nT that are dropped.
-            outdir (str, optional): The output directory for the sampler. Defaults to './output/'.
-            segment (int, optional): Segment number to be searched over. Defaults to None, i.e coherent. 
-                          
-        '''        
+    The typical workflow is::
 
+        inference = Inference(tf_dict, segment_ladder, prior_bounds,
+                              PySO_num_swarms, PySO_num_particles, PySO_kwargs,
+                        datafile_path='path/to/data')
+
+        inference.compute_psd(use_estimated_PSD=False)
+        inference.clip_psd()                          # optional
+        inference.inject_noise(gap_mask=gap_mask)      # optional
+        inference.setup_waveform_generator(use_GPU=True)
+        inference.initialize_and_run_inference()
+
+    Parameters
+    ----------
+    time_frequency_series_dict : dict
+        Contains the time-frequency grid parameters.  Expected keys:
+        ``'T_obs'``, ``'dT'``.
+    prior_bounds : dict
+        Parameter-space prior for the inference.
+    datafile_path : str, optional
+        Directory containing the data, time-grid, and frequency-grid
+        ``.npy`` files.  Defaults to ``'.'``.
+    data_file_name : str, optional
+        Filename of the SFT data array.  Defaults to ``'data.npy'``.
+    t_grid_key : str, optional
+        Filename for the time-segment grid.  Defaults to ``'t_grid.npy'``.
+    f_grid_key : str, optional
+        Filename for the frequency grid.  Defaults to ``'f_grid.npy'``.
+    """
+
+    def __init__(
+        self,
+        time_frequency_series_dict,
+        prior_bounds,
+        datafile_path=".",
+        data_file_name="data.npy",
+        t_grid_key="t_grid.npy",
+        f_grid_key="f_grid.npy",
+    ):
+        # Store search configuration
         self.frequency_series_dict = time_frequency_series_dict
-
         self.prior_bounds = prior_bounds
-                
-        self.data = np.load(data_file_name)
 
-        # Generate CPU and GPU frequency grids
-        self.generate_tf_grid()
-
-        self.psd_arr = np.zeros(self.data.shape)
-
-        self.sampler = sampler
-
-        self.sampler_kwargs = sampler_kwargs
-        self.outdir = outdir 
-
-        self.segment = segment
-        
-        if use_estimated_PSD == True:
-            print('Using estimated PSD...')
-
-            # Load in the PSD object
-            psd_object = np.load(PSD_file_path,allow_pickle=True).item()
-
-            if psd_object['Type'] == 'Interpolator':
-
-                # Extract interpolators in three channels 
-                interpolant_A,interpolant_E,interpolant_T = psd_object['A'],psd_object['E'],psd_object['T']
-                
-                # Generate query points as a 2D grid
-                T, F = np.meshgrid(self.t_seg, self.f_seg, indexing='ij')
-                tf_points = np.column_stack((T.ravel(), F.ravel()))
-
-                # Interpolate
-                psd_A = interpolant_A(tf_points).reshape(T.shape)  # Reshape to match the grid shape
-                psd_E = interpolant_E(tf_points).reshape(T.shape)  
-                psd_T = interpolant_T(tf_points).reshape(T.shape)  
-
-                self.psd_arr = np.array([psd_A,psd_E,psd_T])
-
-            # Use a directly estimated PSD
-            #       This uses a PSD that is computed over usually a number of week segments, and then interpolates this onto a finer time grid
-            elif psd_object['Type'] == 'Constant':
-
-                # Extract PSD in three channels 
-                psd_A,psd_E,psd_T = psd_object['A'],psd_object['E'],psd_object['T']
-                psd_ = np.array([psd_A,psd_E,psd_T])
-
-                # Extract frequencies times over which this psd is estimated
-                time_points= psd_object['Times']
-                frequency_points = psd_object['Frequencies']
-
-                # time_points index that each t_seg falls into 
-                t_seg_indices_to_match_time_points = np.searchsorted(time_points,self.t_seg) 
-                
-                self.psd_arr = np.zeros((3,self.t_seg.size,self.f_seg.size))
-
-                for t_index,t in enumerate(self.t_seg):
-                    # Which PSD bin should I be extracting 
-                    PSD_file_time_index = t_seg_indices_to_match_time_points[t_index]
-                    
-                    # Edge case, i.e self.t_seg > time_points[-1], just asusme
-                    # it remains constant
-                    if PSD_file_time_index==psd_.shape[1]:
-                        self.psd_arr[:,t_index,:] = np.array([self.interpolate_PSD(frequency_points,psd_[i,-1,:]) for i in range(3)])
-                    else:
-                        self.psd_arr[:,t_index,:] = np.array([self.interpolate_PSD(frequency_points,psd_[i,PSD_file_time_index,:]) for i in range(3)])
-
-        else:   
-            print('Using analytic PSD...')
-            noise = get_noise_model("sangria", self.f_seg, wd=self.T_obs/(365.25*24*60*60))
-            psd_A = noise.psd(self.f_seg, option='A', tdi2 = True)
-            psd_E = noise.psd(self.f_seg, option='E', tdi2 = True)
-            psd_T = noise.psd(self.f_seg, option='T', tdi2 = True)
-
-            psd_ = np.array([psd_A,psd_E,psd_T]).reshape(3,self.data.shape[2])
+        # Load data and build time-frequency grid
+        self._load_data_and_generate_tf_grid(data_file_name, datafile_path, t_grid_key=t_grid_key, f_grid_key=f_grid_key)
 
 
-            for i in range(self.nT):
-                self.psd_arr[:,i,:] = psd_.copy()
-        print('PSD shape vs data shape (sanity check): ',self.psd_arr.shape,self.data.shape)
-        # # Generate PSD (For now just read in the spline and evaluate it)
-        # noise_arr = np.load("sangria_psd_info.npy")
-        # psd = CubicSpline(noise_arr[0], noise_arr[1:], axis=1)(self.f_seg)
-        # self.psd_arr = np.tile(psd[:,None,:], (1, self.nT, 1))
+    def _load_data_and_generate_tf_grid(
+        self,
+        data_file_name,
+        datafile_path,
+        t_grid_key="t_grid.npy",
+        f_grid_key="f_grid.npy",
+    ):
+        """Load the SFT data array and construct the time-frequency grid.
 
-        # Temporary bodge to clip out the 0s in the PSD array
-        ## TODO: Should this not be only for the analytic PSD ??? Think about this
+        Reads ``data.npy``, ``t_grid.npy``, and ``f_grid.npy`` from
+        *datafile_path*.
 
-        f_seg_clip_start = 0.029
-        f_seg_clip_end = 0.031
-        f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
-        f_seg_clip_end_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_end)))
-
-        for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
-            self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]
-
-        f_seg_clip_start = 0.059
-        f_seg_clip_end = 0.061
-        f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
-        f_seg_clip_end_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_end)))
-
-        for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
-            self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]
-        
-        f_seg_clip_start = 0.0897
-        f_seg_clip_end = 0.0902
-        f_seg_clip_start_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_start)))
-        f_seg_clip_end_ind = int(np.argmin(np.abs(self.f_seg - f_seg_clip_end)))
-
-        for stupid_ind in range(f_seg_clip_start_ind, f_seg_clip_end_ind):
-            self.psd_arr[:,:,stupid_ind] = self.psd_arr[:,:,f_seg_clip_start_ind]    
-
-        print('IS WHOLE PSD POSITIVE: ',np.all(self.psd_arr>0))
-        # Generate tf noise realisation if noise is to be indjected 
-        if generate_noise_realisation == True:
-            psd_to_generate_noise_from = self.psd_arr.copy()
-            #if use_estimated_PSD == True:
-            #    psd_to_generate_noise_from[:,:,self.f_seg<1.e-3] = 0
-            noise_tf = self.generate_noise_realisation(psd_to_generate_noise_from)
-            self.data += noise_tf
-
-            # If gaps are present, we need to set the noise to zero in those segments
-            if gap_mask is not None:
-
-                total_indices = np.arange(self.nT)
-                dropped_indices= np.setdiff1d(total_indices,gap_mask)
-                self.data[:,dropped_indices,:] = 0.0
-
-        # Bodge for avoiding nans 
-        # self.psd_arr[:,:,self.f_seg<1.e-3] = np.inf
-
-        # Setup waveform function 
-        self.waveform_generator = TaylorF2EccTF(
-                                                self.nT,
-                                                self.dT,
-                                                self.fmax,
-                                                self.nF,
-                                                self.dF,
-                                                self.dt,
-                                                compute_TDI=True,
-                                                use_gpu=use_GPU,
-                                                data = self.data,
-                                                psd=self.psd_arr,
-                                                use_fresnel_kernel=True,
-                                                fresnel_kernel_width=fresnel_kernel_width)
-
-        # Simulating gaps 
-        if gap_mask is not None: 
-            self.waveform_generator.apply_segment_mask(gap_mask)
-
-    def generate_noise_realisation(self,psd_to_generate_noise_from):
-        '''
-        Generates a noise realisation for injecting into data
-
-        Returns:
-            noise: Noise realization 
-        '''
-        # Generate noise in each channel (for each time segment)
-
-        noise = np.zeros((3,self.nT,self.nF),dtype=complex)
-    
-        for t_index,t in enumerate(self.t_seg):
-            # Important thing here is that it is dT not T_obs as that is the size of each segment   
-            noise_A = noise_realization(psd_to_generate_noise_from[0,t_index,:],self.dT)
-            noise_E = noise_realization(psd_to_generate_noise_from[1,t_index,:],self.dT)
-            noise_T = noise_realization(psd_to_generate_noise_from[2,t_index,:],self.dT)
-
-            noise[:,t_index,:] = np.array([noise_A,noise_E,noise_T])
-
-        return noise       
- 
-
-    def interpolate_PSD(self,f_sparse,PSD):
-        '''
-        Interpolates the PSD over the sparse frequency grid using cubic splines
-        in log-space, onto the full frequency grid. This ensures the interpolated
-        PSD remains strictly positive.
-        '''
-        # Mask out any zero or negative values before taking log
-        positive_mask = PSD > 0
-        f_sparse_pos = f_sparse[positive_mask]
-        PSD_pos = PSD[positive_mask]
-
-        # Interpolate in log-space to guarantee positivity
-        psd_interpolator = CubicSpline(f_sparse_pos, np.log(PSD_pos))
-        psd_dense = np.exp(psd_interpolator(self.f_seg))
-        return psd_dense
-
-    def generate_tf_grid(self,):
-        '''
-        Generates the time-frequency grid over which the search is performed.s
-        '''
-
-        # Initialising values for frequency grid
-        self.fmin = self.frequency_series_dict['fmin'] # NOT ACTUALLY TRUE
-        self.fmax = self.frequency_series_dict['fmax']
-        self.T_obs = self.frequency_series_dict['T_obs']
-        # cadence 
-        self.dt = self.frequency_series_dict['dt']
-
-
-        # Length of one tf segment 
-        self.dT = self.frequency_series_dict['dT']
-
-        # Frequency spacing
-        self.dF = 1/self.dT 
-
-        # Number of frequency bins 
-        self.nF = int((self.fmax-self.fmin)/self.dF) + 1 
-
-        # Number of time bins
-        self.nT = int(self.T_obs/self.dT)
-        
-        # Time and frequency segments
-        self.f_seg = np.arange(1,self.nF+1)*self.dF
-        self.t_seg = np.arange(self.nT)*self.dT
-
-    def initialize_and_run_nessai_inference(self,nlive=100):
+        Parameters
+        ----------
+        data_file_name : str
+            Filename of the SFT data array.
+        datafile_path : str
+            Directory containing all ``.npy`` files.
+        t_grid_key : str, optional
+            Filename for the time-segment grid.
+        f_grid_key : str, optional
+            Filename for the frequency grid.
         """
-        Initializes the inference
+        self.data = np.load(os.path.join(datafile_path, data_file_name)) # shape (3, nT, nF)
+        self.t_seg = np.load(os.path.join(datafile_path, t_grid_key))
+        self.f_seg = np.load(os.path.join(datafile_path, f_grid_key))
+
+        # Unpack grid parameters
+        self.T_obs = self.frequency_series_dict["T_obs"]
+        self.dT = self.frequency_series_dict["dT"]
+        self.dF = 1.0 / self.dT
+
+        # Trim frequency grid to search range
+        self.nT = self.t_seg.size - 1
+        self.nF = self.f_seg.size
+
+        print(f"Final f_grid has size: {self.nF}")
+        print(f"Frequency range on TF grid: [{self.f_seg[0]:.6f}, {self.f_seg[-1]:.6f}]")
+
+        # Reshaping data for ingestion by the kenrel which expects (nT, nF, 3) shape. 
+        self.data = self.data.transpose(1,2,0).copy() # shape (nT, nF, 3)
+
+    def compute_psd(self, use_estimated_PSD=False, PSD_file_path="PSD_interpolator.npy"):
+        """Build the PSD array.
+
+        Either loads an empirically-estimated PSD from file, or evaluates
+        the analytic *Sangria* noise model at each frequency bin.
+
+        Parameters
+        ----------
+        use_estimated_PSD : bool, optional
+            If ``True``, load the PSD from *PSD_file_path*.  The file is
+            expected to be a dictionary saved with ``np.save`` containing
+            keys ``'A'``, ``'E'``, ``'T'`` (each shaped
+            ``(n_time_bins, n_freq_bins)``), ``'Times'``, and
+            ``'Frequencies'``.  If ``False`` (default), the analytic
+            *Sangria* noise model is used (stationary across segments).
+        PSD_file_path : str, optional
+            Path to the estimated PSD ``.npy`` file.
+        """
+        self.psd_arr = np.zeros((3, self.nT, self.nF))
+
+        if use_estimated_PSD:
+            self._load_estimated_psd(PSD_file_path)
+        else:
+            self._compute_analytic_psd()
+
+        # Reshaping PSD for ingestion by the kernel which expects (nT, nF, 3) shape. 
+        self.psd_arr = self.psd_arr.transpose(1,2,0).copy()
+
+        print(f"PSD shape: {self.psd_arr.shape}  |  Data shape: {self.data.shape}")
+        print(f"PSD entirely positive: {np.all(self.psd_arr > 0)}")
+
+    def _load_estimated_psd(self, PSD_file_path):
+        """Populate ``self.psd_arr`` from an empirically-estimated PSD file.
+
+        For each time segment the PSD is looked up by nearest earlier
+        time bin and interpolated onto ``self.f_seg`` via log-space cubic
+        splines.  If a segment time exceeds the last estimation point
+        the final PSD bin is re-used.
+        """
+        print("Using directly estimated PSD...")
+
+        psd_object = np.load(PSD_file_path, allow_pickle=True).item()
+
+        psd_channels = np.array([psd_object["A"], psd_object["E"], psd_object["T"]])
+        time_points = psd_object["Times"]
+        frequency_points = psd_object["Frequencies"]
+
+        # Map each t_seg edge to the nearest PSD time bin
+        time_indices = np.searchsorted(time_points, self.t_seg)
+        for t_idx in range(self.nT):
+            # Which psd from the welch estimation to use for this segment?  Look up the nearest time bin.
+            psd_time_idx = time_indices[t_idx]
+            # Edge case, i.e self.t_seg > time_points[-1] (when this happens psd_time_idx == psd_channels.shape[1] from the searchsorted above), just asusme it remains constant
+            if psd_time_idx == psd_channels.shape[1]:
+                psd_time_idx = -1
+            self.psd_arr[:, t_idx, :] = np.array(
+                [self._interpolate_psd_onto_grid(frequency_points, psd_channels[channel, psd_time_idx, :]) for channel in range(3)]
+            )
+
+    def _compute_analytic_psd(self):
+        """Populate ``self.psd_arr`` using the analytic Sangria noise model.
+
+        The model is evaluated once (stationary) and tiled across all
+        time segments.
+        """
+        print("Using analytic PSD...")
+
+        wd_years = self.T_obs / (365.25 * 24 * 60 * 60)
+        noise = get_noise_model("sangria", self.f_seg, wd=wd_years)
+
+        psd_per_channel = np.array([
+            noise.psd(self.f_seg, option="A", tdi2=True),
+            noise.psd(self.f_seg, option="E", tdi2=True),
+            noise.psd(self.f_seg, option="T", tdi2=True),
+        ])  # shape (3, nF)
+
+        # Broadcast the stationary PSD to every time segment
+        self.psd_arr[:] = psd_per_channel[:, np.newaxis, :]
+
+    def clip_psd(self, clip_bands=None):
+        """Flatten the PSD inside specified frequency bands.
+
+        This suppresses narrow spectral artefacts (e.g. transfer-function
+        zeroes at ~30 mHz harmonics) by replacing the PSD values in each
+        band with the value at the band's lower edge.
+
+        Parameters
+        ----------
+        clip_bands : list of (float, float), optional
+            Each tuple gives ``(f_low, f_high)`` in Hz.  Defaults to
+            ``DEFAULT_PSD_CLIP_BANDS``.
+        """
+        if clip_bands is None:
+            clip_bands = DEFAULT_PSD_CLIP_BANDS
+
+        for f_low, f_high in clip_bands:
+            # Beginning index of dip 
+            idx_low = int(np.argmin(np.abs(self.f_seg - f_low)))
+            # Ending index of dip
+            idx_high = int(np.argmin(np.abs(self.f_seg - f_high)))
+            # For all indexes in the dip, set the PSD to the value at the lower edge
+            for k in range(idx_low, idx_high):
+                self.psd_arr[:, k, :] = self.psd_arr[:, idx_low, :]
+
+          
+        print(f"PSD entirely positive: {np.all(self.psd_arr > 0)}")
+
+    def inject_noise(self, gap_mask=None):
+        """Generate a noise realisation from the current PSD and add it to the data.
+
+        **Assumes the loaded data is noise-free** (signal only).
+
+        Parameters
+        ----------
+        gap_mask : array-like of int or None, optional
+            Indices of time segments that are *kept* (i.e. not gapped).
+            Segments not in *gap_mask* are zeroed after noise injection.
+        """
+        noise_tf = self._generate_noise_realisation(self.psd_arr)
+        self.data += noise_tf
+
+        if gap_mask is not None:
+            kept = np.asarray(gap_mask)
+            all_indices = np.arange(self.nT)
+            dropped = np.setdiff1d(all_indices, kept)
+            self.data[dropped, :, :] = 0.0
+
+    def setup_waveform_generator(self, mojito_orbit_filepath='./mojito_orbits.h5',
+                                 mojito_ltt_filepath='./mojito_ltts.h5',
+                                 use_GPU=True, fresnel_kernel_width=5, gap_mask=None,
+                                 spin_only_waveform=True):
+        """Initialise the waveform generator. 
+        
+        Two main elements to this: 
+            - F2Ecc waveform model functions: amplitude, time to coalescence, and phase evolution.
+            - LISA response function: AET transfer functions. 
+         
+        Group waveform + response together. 
+            At the end of the day they both combine to produce the GW model which enters the statistic/likelihood.
+
+        Parameters
+        ----------
+        mojito_orbit_filepath : str, optional
+            Containing ESA orbits for the spacecraft (used to setup the response function).  Defaults to './mojito_orbits.h5'.
+        mojito_ltt_filepath : str, optional
+            Containing ESA light travel times for the spacecraft (used to setup the response function).
+        use_GPU : bool, optional
+            Whether to run the waveform model on CUDA.  Defaults to True.
+        fresnel_kernel_width : int, optional
+            Width of the Fresnel-kernel summation.  Defaults to 5.
+        gap_mask : array-like of int or None, optional
+            If provided, the corresponding segment mask is applied to the
+            waveform generator so that gapped segments are excluded.
+            NOTE: Not implemented yet
+        spin_only_waveform : bool, optional
+            If True, use a waveform model that includes only spin effects and no eccentricity. (T3)
+            If False, use a waveform model that includes both spin and eccentricity effects. (F2Ecc)  Defaults to True.
+        """
+
+        # Positions of spacecraft (3,3,nT)
+        p, Ls = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath, mojito_ltt_filepath=mojito_ltt_filepath)
+
+        self.Ls = Ls*clight # Convert to seconds for the waveform generator.
+
+        # Needs to transform this to (nT,3,3) for the gwtf kernel 
+        self.p = p.transpose(2,0,1).copy()
+
+        # Setup config that waveform generator needs
+        config = {'nT':self.nT,
+                  'nF':self.nF,
+                  'dT':self.dT,
+                  'dF':self.dF,
+                  'kernel_width':fresnel_kernel_width}        
+        
+        if use_GPU:
+            backend = 'gpu'
+        else:
+            backend = 'cpu'
+
+        print(f"Setting up waveform generator with {backend} backend...")
+
+        if spin_only_waveform:
+            # No eccentricity, spin algined. 
+            wf_model_class = TaylorT3Spin
+        else:
+            # Eccentricity only no spin. 
+            wf_model_class = TaylorT2Ecc
+        
+        self.waveform_generator = AnalyticTimeFrequencyWaveform(model_class=wf_model_class, 
+                                                                config=config,
+                                                                tdi_type=2,
+                                                                backend=backend,
+                                                                channels=self.data,
+                                                                spacecraft_orbits=self.p,
+                                                                spacecraft_ltts=self.Ls)
+
+        # This returns a function which is the kernel that directly takes in waveform parameters and outputs search statistics.         
+        # self.statistic_generator = self.waveform_generator.statistic_kernel
+        
+        # Waveform generator object, fills in array provided to it with waveform, useful for debugging, constructed using the same methods as the statistic generator 
+        # self.debugging_waveform_generator = self.waveform_generator.waveform_kernel
+        
+
+        # if gap_mask is not None:
+        #     self.waveform_generator.apply_segment_mask(gap_mask)
+
+    def setup_response_function(self,mojito_orbit_filepath='./mojito_orbits.h5', mojito_ltt_filepath='./mojito_ltts.h5'):
+        """
+        Setup the LISA response funtion. 
+
+        - Reads in the mojito orbit file which contains position data for each spacecraft.
+        - Interpolates (using Cubicspline) to SFT fixed time array to the SFT segment times. 
+        - Outputs positions of all spacecraft at central times within each SFT segment. 
+
+        Ran once at the beginning of analysis. 
+
+        Feeds into the AET_TFs_func within the kernel. 
+
+        Parameters
+        ----------
+        mojito_orbit_filepath : str, optional
+            Containing ESA orbits.  Defaults to './mojito_orbits.h5'.
+        mojito_ltt_filepath : str, optional
+            Containing ESA light travel times for the spacecraft (used to setup the response function).  Defaults to './mojito_ltts.h5'.
+
+        Returns
+        -------
+        p : array of shape (3,3,nT)
+            Positions of 3 spacecraft in SSB frame at central SFT times. 
+        Ls : array of shape (nT,3)
+            Light travel times for each link at central SFT times.
+        """
+        
+        p, Ls = generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath, 
+                                                    mojito_ltt_filepath=mojito_ltt_filepath,
+                                                              t_sft=self.t_seg)
+
+        return(p,Ls)
+
+    def initialize_and_run_inference(self,nlive=1000,
+                                     use_GPU=False,
+                                     outdir="./Inference_output",
+                                     sampler_kwargs = {}):
+        """Run *coherent* inference.
+
+        Parameters
+        ----------
+        use_GPU : bool, optional
+            Whether to run the search on CUDA.  Defaults to True.
+        nlive: int, optional
+            Number of live points to use in the nested sampling inference.  Defaults to 1000
+        outdir: str, optional
+            Output directory for the inference results.  Defaults to "./Inference_output".
+        sampler_kwargs: dict, optional
+            Additional keyword arguments to pass to the FlowSampler.  Defaults to an empty dictionary.
+
         """
         self.inference_class = Model_inference(self.prior_bounds,
                                                             self.data,
                                                             self.waveform_generator,
-                                                            segment = self.segment)                                                      
+                                                            self.nT,
+                                                            self.psd_arr,
+                                                            self.dF,
+                                                            use_GPU=use_GPU,
+                                                            nlive = nlive)                                                      
 
-        logger = setup_logger(output=self.outdir)
+        logger = setup_logger(output=outdir)
 
         self.sampler = FlowSampler(self.inference_class,
-                                    output=self.outdir,
+                                    output=outdir,
                                     nlive=nlive,
-                                    **self.sampler_kwargs)
+                                    **sampler_kwargs)
 
         self.sampler.run()
+
+    def _generate_noise_realisation(self, psd):
+        """Draw a coloured-noise realisation from the given PSD array.
+
+        Generates independent Gaussian noise for each TDI channel
+        (A, E, T) and each time segment, using the per-segment PSD and
+        the segment duration ``dT``.
+
+        Parameters
+        ----------
+        psd : ndarray, shape (nT, nF, 3)
+            One-sided PSD for each channel and time segment.
+
+        Returns
+        -------
+        noise : ndarray, shape (nT, nF, 3), complex
+            Frequency-domain noise realisation.
+        """
+        noise = np.zeros((self.nT, self.nF, 3), dtype=complex)
+
+        for t_idx in range(self.nT):
+            for ch in range(3):
+                noise[t_idx, :, ch] = noise_realization(psd[t_idx, :, ch], self.dT)
+
+        return noise
+
+    def _interpolate_psd_onto_grid(self, f_sparse, psd_sparse):
+        """Interpolate a sparse PSD onto ``self.f_seg`` via log-space cubic splines.
+
+        Operates in log-space so that the interpolated PSD is guaranteed
+        to remain strictly positive.
+
+        Parameters
+        ----------
+        f_sparse : ndarray
+            Frequency sample points of the sparse PSD.
+        psd_sparse : ndarray
+            PSD values at *f_sparse*.
+
+        Returns
+        -------
+        psd_dense : ndarray
+            Interpolated PSD evaluated on ``self.f_seg``.
+        """
+        positive = psd_sparse > 0
+        spline = CubicSpline(f_sparse[positive], np.log(psd_sparse[positive]))
+        return np.exp(spline(self.f_seg))
