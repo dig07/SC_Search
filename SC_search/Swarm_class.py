@@ -241,7 +241,7 @@ class Model_inference(Model):
 
         # self.total_number_of_particles = total_number_of_particles
 
-        self.statistic_array = self.xp.zeros((likelihood_chunksize,self.nT,2),dtype=complex) # self.xp.zeros((self.batch_size,), dtype=np.float64) # Pre-allocate array for the search statistic values for each batch of particles
+        # self.statistic_array = self.xp.zeros((likelihood_chunksize,self.nT,2),dtype=complex) # self.xp.zeros((self.batch_size,), dtype=np.float64) # Pre-allocate array for the search statistic values for each batch of particles
 
         self._wf_params = self.xp.zeros((likelihood_chunksize, 8), dtype=np.float64) 
         self._resp_params = self.xp.zeros((likelihood_chunksize, 4), dtype=np.float64)
@@ -331,20 +331,20 @@ class Model_inference(Model):
         resp_params[:, 2] = lam
         resp_params[:, 3] = beta
 
-        if  self.statistic_array.shape[0] != nlive:
-            print("Re-Allocating output array for the GPU kernel with batch size:", nlive)
-            self.statistic_array = self.xp.zeros((nlive,self.nT,2), dtype=complex) # Allocate array for the search statistic values for each batch of particles if it hasn't been allocated yet or if the batch size has changed
+        # if  self.statistic_array.shape[0] != nlive:
+        #     print("Re-Allocating output array for the GPU kernel with batch size:", nlive)
+        #     self.statistic_array = self.xp.zeros((nlive,self.nT,2), dtype=complex) # Allocate array for the search statistic values for each batch of particles if it hasn't been allocated yet or if the batch size has changed
                 
-        self.waveform_generator(parameters=wf_params, 
+        statistic_array = self.waveform_generator(parameters=wf_params, 
                                         channels=self.data,
                                         psds=self.psd,
                                         parameters_response=resp_params,
-                                        out = self.statistic_array,
+                                        out = None,
                                         compute_statistic=True)
         
         # self.statistic_array is shaped as (nlive, nT, 2)
-        d_h_per_source = self.xp.sum(self.statistic_array[:,:,0], axis=1) 
-        h_h_per_source = self.xp.sum(self.statistic_array[:,:,1], axis=1)
+        d_h_per_source = self.xp.sum(statistic_array[:,:,0], axis=1) 
+        h_h_per_source = self.xp.sum(statistic_array[:,:,1], axis=1)
         log_likelihoods = -0.5 * (self.d_d + h_h_per_source - 2*d_h_per_source)
 
         # # CuPy arrays expose .get(); NumPy arrays do not.
