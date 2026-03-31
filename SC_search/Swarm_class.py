@@ -253,9 +253,9 @@ class Model_inference(Model):
 
     def log_prior(self, x):
         """Uniform prior"""
-        log_p = self.xp.log(self.in_bounds(x), dtype="float")
+        log_p = np.log(self.in_bounds(x), dtype="float")
         for bounds in self.bounds.values():
-            log_p -= self.xp.log(bounds[1] - bounds[0])
+            log_p -= np.log(bounds[1] - bounds[0])
         return log_p
 
     def to_unit_hypercube(self, x):

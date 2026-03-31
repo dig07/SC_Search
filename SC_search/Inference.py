@@ -276,7 +276,6 @@ class Inference:
             If True, use a waveform model that includes only spin effects and no eccentricity. (T3)
             If False, use a waveform model that includes both spin and eccentricity effects. (F2Ecc)  Defaults to True.
         """
-
         # Positions of spacecraft (3,3,nT)
         p, Ls = self.setup_response_function(mojito_orbit_filepath=mojito_orbit_filepath, mojito_ltt_filepath=mojito_ltt_filepath)
 
@@ -305,7 +304,6 @@ class Inference:
         else:
             # Eccentricity only no spin. 
             wf_model_class = TaylorT2Ecc
-        
         self.waveform_generator = AnalyticTimeFrequencyWaveform(model_class=wf_model_class, 
                                                                 config=config,
                                                                 tdi_type=2,
@@ -313,7 +311,6 @@ class Inference:
                                                                 channels=self.data,
                                                                 spacecraft_orbits=self.p,
                                                                 spacecraft_ltts=self.Ls)
-
         # This returns a function which is the kernel that directly takes in waveform parameters and outputs search statistics.         
         # self.statistic_generator = self.waveform_generator.statistic_kernel
         
