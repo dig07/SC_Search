@@ -62,7 +62,6 @@ class Inference:
     def __init__(
         self,
         time_frequency_series_dict,
-        prior_bounds,
         datafile_path=".",
         data_file_name="data.npy",
         t_grid_key="t_grid.npy",
@@ -70,7 +69,6 @@ class Inference:
     ):
         # Store search configuration
         self.frequency_series_dict = time_frequency_series_dict
-        self.prior_bounds = prior_bounds
 
         # Load data and build time-frequency grid
         self._load_data_and_generate_tf_grid(data_file_name, datafile_path, t_grid_key=t_grid_key, f_grid_key=f_grid_key)
@@ -354,7 +352,9 @@ class Inference:
 
         return(p,Ls)
 
-    def initialize_and_run_inference(self,nlive=1000,
+    def initialize_and_run_inference(self,
+                                     priors,
+                                     nlive=1000,
                                      use_GPU=False,
                                      outdir="./Inference_output",
                                      sampler_kwargs = {}):
@@ -372,18 +372,17 @@ class Inference:
             Additional keyword arguments to pass to the FlowSampler.  Defaults to an empty dictionary.
 
         """
-        self.inference_class = Model_inference(self.prior_bounds,
-                                                            self.data,
-                                                            self.waveform_generator,
-                                                            self.nT,
-                                                            self.psd_arr,
-                                                            self.dF,
-                                                            use_GPU=use_GPU,
-                                                            nlive = nlive)                                                      
+        self.inference_class = Model_inference(priors,
+                                                self.data,
+                                                self.waveform_generator,
+                                                self.nT,
+                                                self.psd_arr,
+                                                self.dF,
+                                                use_GPU=use_GPU) # This is the batch size for the likelihood evaluation, we set it to nlive so that the GPU kernel can process all particles in one batch.                           
 
         logger = setup_logger(output=outdir)
 
-        self.sampler = FlowSampler(self.inference_class,
+        self.sampler = FlowSampler(self.inference_class, # This is the batch size for the likelihood evaluation, we set it to nlive so that the GPU kernel can process all particles in one batch.
                                     output=outdir,
                                     nlive=nlive,
                                     **sampler_kwargs)

@@ -217,10 +217,8 @@ class Model_inference(Model):
         nT, 
         psd,
         dF, 
-        use_GPU = False,
-        nlive = 1000,
-        likelihood_chunksize = 10000,
-    ):
+        use_GPU = False):
+
         self.bounds = priors
         self.waveform_generator = waveform_generator
         self.nT = nT
@@ -240,13 +238,6 @@ class Model_inference(Model):
         # self.results_array = self.xp.zeros((total_number_of_particles,), dtype=np.float64) # Pre-allocate array for results
 
         # self.total_number_of_particles = total_number_of_particles
-
-        # self.statistic_array = self.xp.zeros((likelihood_chunksize,self.nT,2),dtype=complex) # self.xp.zeros((self.batch_size,), dtype=np.float64) # Pre-allocate array for the search statistic values for each batch of particles
-
-        self._wf_params = self.xp.zeros((likelihood_chunksize, 8), dtype=np.float64) 
-        self._resp_params = self.xp.zeros((likelihood_chunksize, 4), dtype=np.float64)
-
-
         # Storing d_d by computing it once at the beginning of the inference. 
         # Both data and PSD are shaped as (nT,nF,3)
         self.d_d = 4*self.xp.abs(self.xp.sum(self.data.conjugate() * self.data / self.psd * dF))
@@ -312,29 +303,10 @@ class Model_inference(Model):
         M = Mc * (q / (1 + q)**2)**(-3/5)
 
         eta = (Mc / M)**(5/3)
-        
-        # Subset to the number of particles in the current batch.  This way we can keep the GPU kernel's output array allocated to the maximum batch size, and just fill it with the current batch's results for each call to the objective function.
-        wf_params = self._wf_params[:nlive]
-        resp_params = self._resp_params[:nlive]
 
-        wf_params[:, 0] = M
-        wf_params[:, 1] = eta
-        wf_params[:, 2] = cosinc
-        wf_params[:, 3] = D
-        wf_params[:, 4] = f0
-        wf_params[:, 5] = s1
-        wf_params[:, 6] = s2
-        wf_params[:, 7] = phi_coal
+        wf_params = self.xp.column_stack((M, eta, cosinc, D, f0, s1, s2, phi_coal))
+        resp_params = self.xp.column_stack((cosinc, psi, lam, beta))
 
-        resp_params[:, 0] = cosinc
-        resp_params[:, 1] = psi
-        resp_params[:, 2] = lam
-        resp_params[:, 3] = beta
-
-        # if  self.statistic_array.shape[0] != nlive:
-        #     print("Re-Allocating output array for the GPU kernel with batch size:", nlive)
-        #     self.statistic_array = self.xp.zeros((nlive,self.nT,2), dtype=complex) # Allocate array for the search statistic values for each batch of particles if it hasn't been allocated yet or if the batch size has changed
-                
         statistic_array = self.waveform_generator(parameters=wf_params, 
                                         channels=self.data,
                                         psds=self.psd,
