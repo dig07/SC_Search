@@ -172,7 +172,6 @@ class Semi_Coherent_Model(PySO.Model):
         
         except AttributeError:
             return self.statistic_array
-    
 class Model_inference(Model):
     """Coherent inference model
 

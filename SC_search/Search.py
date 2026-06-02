@@ -22,7 +22,7 @@ DEFAULT_PSD_CLIP_BANDS = [
     (0.029, 0.031),
     (0.059, 0.061),
     (0.0897, 0.0902),
-]
+] # Should really be time-dependent but this is a first pass.
 
 
 class Search:
@@ -367,14 +367,14 @@ class Search:
             Light travel times for each link at central SFT times.
         """
         
-        p, Ls = generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath, 
+        p, Ls = generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath,
                                                     mojito_ltt_filepath=mojito_ltt_filepath,
-                                                              t_sft=self.t_seg)
+                                                              t_tranches=self.t_seg)
 
         return(p,Ls)
 
     def initialize_and_run_search(self, use_GPU=True,
-                                  total_number_of_particles=100000, batch_size=10000):
+                                  total_number_of_particles=100000):
         """Run the hierarchical semi-coherent PSO search.
 
         Creates a ``Semi_Coherent_Model`` for each rung in the segment
