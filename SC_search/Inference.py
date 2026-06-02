@@ -348,7 +348,7 @@ class Inference:
         
         p, Ls = generate_mojito_orbit_splines_resample(mojito_orbit_filepath=mojito_orbit_filepath, 
                                                     mojito_ltt_filepath=mojito_ltt_filepath,
-                                                              t_sft=self.t_seg)
+                                                              t_tranches=self.t_seg)
 
         return(p,Ls)
 
