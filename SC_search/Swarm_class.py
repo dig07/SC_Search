@@ -195,8 +195,8 @@ class Model_inference(Model):
     """
 
     names = [
-        "Mc",
-        "q",
+        "m1",
+        "m2",
         "cosinc",
         "D",
         "f0",
@@ -284,11 +284,11 @@ class Model_inference(Model):
 
         # t_0 = perf_counter()  
         
-        nlive = params["Mc"].shape[0]
+        nlive = params["m1"].shape[0]
 
         # Move particle arrays to the selected backend once (NumPy or CuPy).
-        Mc = self.xp.asarray(params["Mc"])
-        q = self.xp.asarray(params["q"])
+        m1 = self.xp.asarray(params["m1"])
+        m2 = self.xp.asarray(params["m2"])
         D = self.xp.asarray(params["D"])*1.e+6 # Convert distance from Mpc to pc
         phi_coal = self.xp.asarray(params["phicoal"])
         cosinc = self.xp.asarray(params["cosinc"])
@@ -299,9 +299,10 @@ class Model_inference(Model):
         lam = self.xp.asarray(params["lam"])
         beta = self.xp.asarray(params["beta"])
 
-        M = Mc * (q / (1 + q)**2)**(-3/5)
+        Mc = (m1 * m2)**(3/5) / (m1 + m2)**(1/5)
+        eta = (m1 * m2) / (m1 + m2)**2
 
-        eta = (Mc / M)**(5/3)
+        M = Mc * (eta)**(-3/5)
 
         wf_params = self.xp.column_stack((M, eta, cosinc, D, f0, s1, s2, phi_coal))
         resp_params = self.xp.column_stack((cosinc, psi, lam, beta))
