@@ -616,13 +616,19 @@ def corner_mine(posteriors,
 
     global_axis_array = np.zeros((ndim,ndim), dtype=object)    
     
-    # Put diagonals into global axis array 
+    # Put diagonals into global axis array
     for axis_index,ax in enumerate(ax_diag):
         ax.tick_params(labelsize=tick_fontsize,rotation=45)
+        # tick_params does not touch the scientific-notation offset text (the
+        # "x10^-5 + ..." indicator), so size it explicitly to match the ticks
+        ax.xaxis.get_offset_text().set_fontsize(tick_fontsize)
+        ax.yaxis.get_offset_text().set_fontsize(tick_fontsize)
         global_axis_array[axis_index,axis_index] = ax
-    
+
     for ax in sum(ax_offdiag,[]):
         ax.tick_params(labelsize=tick_fontsize,rotation=45)
+        ax.xaxis.get_offset_text().set_fontsize(tick_fontsize)
+        ax.yaxis.get_offset_text().set_fontsize(tick_fontsize)
 
     
     # Put off diagonals in global axis array 
