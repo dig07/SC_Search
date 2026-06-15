@@ -192,31 +192,60 @@ class Model_inference(Model):
         Power spectral density array (shape (nT,nF,3)) for the data.  Used for computing the search statistics.
     use_GPU : bool, optional
         Whether to use the GPU-accelerated version of the objective function.  Defaults to False
+    mass_parameterisation : {"m1m2", "mceta"}, optional
+        Which mass coordinates the sampler supplies (and hence the first two
+        entries of :attr:`names` / the prior). ``"m1m2"`` (default) -> the
+        sampler varies the two component masses ``(m1, m2)``; ``"mceta"`` -> it
+        varies ``(Mc, eta)`` directly. Either way the likelihood converts to
+        the ``(Mc, eta, M)`` the waveform model needs, so only the sampled
+        coordinates differ, not the physics.
     """
 
-    names = [
-        "m1",
-        "m2",
-        "cosinc",
-        "D",
-        "f0",
-        "s1",
-        "s2",
-        "phicoal",
-        "psi",
-        "lam",
-        "beta",
-    ]
+    # # Default parameter order (m1m2 parameterisation). ``__init__`` overrides
+    # # this with an instance-level ``self.names`` reflecting the chosen mass
+    # # parameterisation; no caller reads it at the class level.
+    # names = [
+    #     "m1",
+    #     "m2",
+    #     "cosinc",
+    #     "D",
+    #     "f0",
+    #     "s1",
+    #     "s2",
+    #     "phicoal",
+    #     "psi",
+    #     "lam",
+    #     "beta",
+    # ]
 
     def __init__(
         self,
         priors,
         data,
         waveform_generator,
-        nT, 
+        nT,
         psd,
-        dF, 
-        use_GPU = False):
+        dF,
+        use_GPU = False,
+        vectorize = False,
+        mass_parameterisation = "m1m2"):
+
+        # Which mass coordinates does the sampler supply? The likelihood always
+        # converts to (Mc, eta, M) internally; this only sets the first two
+        # sampled parameters (and the matching ``self.names`` order).
+        non_mass_names = ["cosinc", "D", "f0", "s1", "s2", "phicoal", "psi", "lam", "beta"]
+        if mass_parameterisation == "m1m2":
+            mass_names = ["m1", "m2"]
+        elif mass_parameterisation == "mceta":
+            mass_names = ["Mc", "eta"]
+        else:
+            raise ValueError(
+                f"mass_parameterisation must be 'm1m2' or 'mceta', got {mass_parameterisation!r}"
+            )
+        self.mass_parameterisation = mass_parameterisation
+        # Instance-level parameter order; samplers build priors / coordinate
+        # arrays in exactly this order (see Inference.initialize_and_run_inference_eryn).
+        self.names = mass_names + non_mass_names
 
         self.bounds = priors
         self.waveform_generator = waveform_generator
@@ -240,6 +269,9 @@ class Model_inference(Model):
         # Storing d_d by computing it once at the beginning of the inference. 
         # Both data and PSD are shaped as (nT,nF,3)
         self.d_d = 4*self.xp.abs(self.xp.sum(self.data.conjugate() * self.data / self.psd * dF))
+        
+        # Used to indicate wether the parameter batching is done within a dictionary or directly in a numpy array. 
+        self.vectorize = vectorize 
 
     def log_prior(self, x):
         """Uniform prior"""
@@ -282,25 +314,57 @@ class Model_inference(Model):
             Search statistic value for each particle.
         """
 
-        # t_0 = perf_counter()  
-        
-        nlive = params["m1"].shape[0]
+        # t_0 = perf_counter()
+        if self.vectorize:
+            # Vectorized path: ``params`` is a 2D array of shape (n_points, ndim).
+            # The COLUMN ORDER MUST MATCH ``self.names`` exactly, because samplers
+            # such as eryn pass a positional array whose columns correspond to the
+            # priors built in ``self.names`` order. (See Inference.initialize_and_run_inference_eryn.)
+            # Columns 0,1 are the two mass coordinates (m1,m2 or Mc,eta); 2..10 are:
+            #   2:cosinc  3:D  4:f0  5:s1  6:s2  7:phicoal  8:psi  9:lam  10:beta
+            # Move particle arrays to the selected backend once (NumPy or CuPy).
+            cosinc = self.xp.asarray(params[:,2])
+            D = (self.xp.asarray(params[:,3]))*1.e+6 # Convert distance from Mpc to pc
+            f0 = self.xp.asarray(params[:,4])
+            s1 = self.xp.asarray(params[:,5])
+            s2 = self.xp.asarray(params[:,6])
+            phi_coal = self.xp.asarray(params[:,7])
+            psi = self.xp.asarray(params[:,8])
+            lam = self.xp.asarray(params[:,9])
+            beta = self.xp.asarray(params[:,10])
 
-        # Move particle arrays to the selected backend once (NumPy or CuPy).
-        m1 = self.xp.asarray(params["m1"])
-        m2 = self.xp.asarray(params["m2"])
-        D = self.xp.asarray(params["D"])*1.e+6 # Convert distance from Mpc to pc
-        phi_coal = self.xp.asarray(params["phicoal"])
-        cosinc = self.xp.asarray(params["cosinc"])
-        f0 = self.xp.asarray(params["f0"])
-        s1 = self.xp.asarray(params["s1"])
-        s2 = self.xp.asarray(params["s2"])
-        psi = self.xp.asarray(params["psi"])
-        lam = self.xp.asarray(params["lam"])
-        beta = self.xp.asarray(params["beta"])
+            if self.mass_parameterisation == "mceta":
+                Mc = self.xp.asarray(params[:,0])
+                eta = self.xp.asarray(params[:,1])
+            else:
+                m1 = self.xp.asarray(params[:,0])
+                m2 = self.xp.asarray(params[:,1])
+                Mc = (m1 * m2)**(3/5) / (m1 + m2)**(1/5)
+                eta = (m1 * m2) / (m1 + m2)**2
+            # print('Size of batch:', beta.shape)
+        else:
 
-        Mc = (m1 * m2)**(3/5) / (m1 + m2)**(1/5)
-        eta = (m1 * m2) / (m1 + m2)**2
+            # nlive = params["m1"].shape[0]
+
+            # Move particle arrays to the selected backend once (NumPy or CuPy).
+            D = (self.xp.asarray(params["D"]))*1.e+6 # Convert distance from Mpc to pc
+            phi_coal = self.xp.asarray(params["phicoal"])
+            cosinc = self.xp.asarray(params["cosinc"])
+            f0 = self.xp.asarray(params["f0"])
+            s1 = self.xp.asarray(params["s1"])
+            s2 = self.xp.asarray(params["s2"])
+            psi = self.xp.asarray(params["psi"])
+            lam = self.xp.asarray(params["lam"])
+            beta = self.xp.asarray(params["beta"])
+
+            if self.mass_parameterisation == "mceta":
+                Mc = self.xp.asarray(params["Mc"])
+                eta = self.xp.asarray(params["eta"])
+            else:
+                m1 = self.xp.asarray(params["m1"])
+                m2 = self.xp.asarray(params["m2"])
+                Mc = (m1 * m2)**(3/5) / (m1 + m2)**(1/5)
+                eta = (m1 * m2) / (m1 + m2)**2
 
         M = Mc * (eta)**(-3/5)
 
@@ -325,4 +389,5 @@ class Model_inference(Model):
         
         except AttributeError:
             return log_likelihoods
+    
     

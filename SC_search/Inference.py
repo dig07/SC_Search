@@ -357,6 +357,7 @@ class Inference:
                                      nlive=1000,
                                      use_GPU=False,
                                      outdir="./Inference_output",
+                                     mass_parameterisation="m1m2",
                                      sampler_kwargs = {}):
         """Run *coherent* inference.
 
@@ -368,6 +369,11 @@ class Inference:
             Number of live points to use in the nested sampling inference.  Defaults to 1000
         outdir: str, optional
             Output directory for the inference results.  Defaults to "./Inference_output".
+        mass_parameterisation : {"m1m2", "mceta"}, optional
+            Which mass coordinates the sampler varies. ``"m1m2"`` (default) ->
+            ``priors`` must supply ``m1`` and ``m2``; ``"mceta"`` -> it must
+            supply ``Mc`` and ``eta`` instead. See
+            :class:`~SC_search.Swarm_class.Model_inference`.
         sampler_kwargs: dict, optional
             Additional keyword arguments to pass to the FlowSampler.  Defaults to an empty dictionary.
 
@@ -378,7 +384,8 @@ class Inference:
                                                 self.nT,
                                                 self.psd_arr,
                                                 self.dF,
-                                                use_GPU=use_GPU) # This is the batch size for the likelihood evaluation, we set it to nlive so that the GPU kernel can process all particles in one batch.                           
+                                                use_GPU=use_GPU,
+                                                mass_parameterisation=mass_parameterisation) # This is the batch size for the likelihood evaluation, we set it to nlive so that the GPU kernel can process all particles in one batch.
 
         logger = setup_logger(output=outdir)
 
@@ -388,6 +395,254 @@ class Inference:
                                     **sampler_kwargs)
 
         self.sampler.run()
+
+    def initialize_and_run_inference_eryn(self,
+                                          priors,
+                                          nwalkers=1000,
+                                          ntemps=1,
+                                          nsteps=5000,
+                                          burn=None,
+                                          thin_by=1,
+                                          use_GPU=False,
+                                          outdir="./Inference_output",
+                                          mass_parameterisation="m1m2",
+                                          injection_params=None,
+                                          injection_scatter=1e-3,
+                                          injection_std=None,
+                                          periodic=None,
+                                          progress=True,
+                                          sampler_kwargs={}):
+        """Run *coherent* inference with the eryn ensemble (PT-)MCMC sampler.
+
+        This is the eryn analogue of :meth:`initialize_and_run_inference` (which
+        uses nessai).  It wraps the vectorised likelihood of
+        :class:`~SC_search.Swarm_class.Model_inference` so eryn evaluates a whole
+        batch of walkers in a single GPU kernel call.
+
+        Parameters
+        ----------
+        priors : dict
+            Prior bounds keyed by parameter name, e.g.
+            ``dict(m1=[lo, hi], m2=[lo, hi], cosinc=[-1, 1], ...)``.  Must contain
+            every name the model expects for the chosen ``mass_parameterisation``
+            (i.e. ``m1``/``m2`` or ``Mc``/``eta`` for the two masses, plus the
+            shared parameters), same dict format as the nessai path.  Bounds are
+            interpreted as uniform priors.
+        nwalkers : int, optional
+            Number of walkers *per temperature*.  Defaults to 100.
+        ntemps : int, optional
+            Number of parallel-tempering temperatures.  ``1`` (default) is a
+            plain ensemble MCMC; use ``>1`` for multimodal posteriors.
+        nsteps : int, optional
+            Number of stored MCMC iterations.  Defaults to 5000.
+        burn : int or None, optional
+            Number of burn-in iterations run before storing (not written to the
+            backend).  Defaults to ``None`` (no burn-in).
+        thin_by : int, optional
+            Store only every ``thin_by``-th iteration.  Defaults to 1.
+        use_GPU : bool, optional
+            Whether the likelihood runs on CUDA.  Defaults to False.
+        outdir : str, optional
+            Output directory.  The chain is written to
+            ``<outdir>/eryn_state.h5`` via an :class:`eryn.backends.HDFBackend`.
+        mass_parameterisation : {"m1m2", "mceta"}, optional
+            Which mass coordinates the walkers sample. ``"m1m2"`` (default) ->
+            ``priors`` (and ``injection_params`` / ``injection_std``) use ``m1``
+            and ``m2``; ``"mceta"`` -> they use ``Mc`` and ``eta`` instead. The
+            likelihood converts to ``(Mc, eta, M)`` internally either way. See
+            :class:`~SC_search.Swarm_class.Model_inference`.
+        injection_params : dict, array-like, or None, optional
+            If provided, the walkers are seeded in a tight Gaussian ball around
+            these values (the "injection") and evolve from there, instead of
+            being drawn from the prior.  May be a dict keyed by parameter name
+            (a subset is allowed -- names not supplied are drawn from the prior)
+            or a full-length array in ``Model_inference.names`` order.
+        injection_scatter : float, optional
+            Std of the seeding ball as a fraction of each parameter's prior
+            width.  Defaults to ``1e-3`` (0.1 %).  Walkers are clipped to stay
+            inside the prior so every starting point has finite prior.  Used as
+            the fallback for any dimension not covered by ``injection_std``.
+        injection_std : float, dict, array-like, or None, optional
+            Per-dimension **absolute** standard deviation of the seeding ball,
+            in each parameter's own units (overrides ``injection_scatter`` for
+            the dimensions it covers).  May be:
+
+            - a scalar applied to every dimension;
+            - a dict keyed by parameter name (a subset is allowed -- dimensions
+              not supplied fall back to ``injection_scatter * prior_width``);
+            - a full-length array/list in ``Model_inference.names`` order
+              (entries that are ``NaN`` fall back to the scatter default).
+
+            ``None`` (default) reproduces the original behaviour where every
+            dimension uses ``injection_scatter * prior_width``.
+        periodic : dict or None, optional
+            Periodic parameters as ``{name: period}``.  ``None`` (default)
+            auto-detects the standard angles present (``phicoal`` -> 2*pi,
+            ``psi`` -> pi).  Pass ``{}`` to disable periodic boundaries.
+        progress : bool, optional
+            Show a tqdm progress bar.  Defaults to True.
+        sampler_kwargs : dict, optional
+            Extra keyword arguments forwarded to ``EnsembleSampler``.
+
+        Returns
+        -------
+        sampler : eryn.ensemble.EnsembleSampler
+            The sampler after running.  The chain is available via
+            ``sampler.get_chain()["model_0"]`` with shape
+            ``(nsteps, ntemps, nwalkers, 1, ndim)``; the cold-chain posterior is
+            ``[..., 0, :, 0, :]``.  Columns follow ``Model_inference.names``.
+        """
+        import numpy as np
+        # eryn 1.2.6 still calls np.in1d, which NumPy 2.0 removed in favour of
+        # np.isin. They are equivalent for the 1-D inputs eryn uses, so restore
+        # the alias rather than editing the installed package.
+        if not hasattr(np, "in1d"):
+            np.in1d = np.isin
+            
+        from eryn.ensemble import EnsembleSampler
+        from eryn.prior import ProbDistContainer, uniform_dist
+        from eryn.state import State
+        from eryn.backends import HDFBackend
+        from eryn.utils import PlotContainer
+        from eryn.utils.periodic import PeriodicContainer
+
+        self.inference_class = Model_inference(priors,
+                                               self.data,
+                                               self.waveform_generator,
+                                               self.nT,
+                                               self.psd_arr,
+                                               self.dF,
+                                               use_GPU=use_GPU,
+                                               vectorize=True,
+                                               mass_parameterisation=mass_parameterisation)
+
+        # Parameter order is fixed by the model; the eryn coordinate array and
+        # all priors below are built in exactly this order.
+        names = self.inference_class.names
+        ndim = len(names)
+
+        missing = [n for n in names if n not in priors]
+        if missing:
+            raise ValueError(f"priors is missing bounds for parameters: {missing}")
+
+        lows = np.array([priors[n][0] for n in names], dtype=np.float64)
+        highs = np.array([priors[n][1] for n in names], dtype=np.float64)
+
+        # Uniform prior per parameter, keyed by integer index (== column index).
+        priors_in = {i: uniform_dist(lows[i], highs[i]) for i in range(ndim)}
+        prior_container = ProbDistContainer(priors_in)
+
+        # Periodic boundaries for angular parameters (improves mixing a lot).
+        if periodic is None:
+            periodic_names = {} 
+            if "phicoal" in names: # Coalescence phase
+                periodic_names["phicoal"] = 2 * np.pi
+            if "psi" in names: # Polarisation angle
+                periodic_names["psi"] = np.pi
+            if "lam" in names: # Ecliptic Longitude
+                periodic_names["lam"] = 2 * np.pi
+        else:
+            periodic_names = periodic
+        # NB: build the PeriodicContainer ourselves rather than handing
+        # EnsembleSampler a plain dict. This installed eryn only registers
+        # periodic params whose keys are *strings* paired with a `key_order`
+        # (periodic.py:32-39); an integer-index dict is silently dropped, and a
+        # string-keyed dict raises because EnsembleSampler builds the container
+        # without `key_order`. Passing a pre-built container sidesteps both.
+        periodic_eryn = (
+            PeriodicContainer(
+                {"model_0": dict(periodic_names)},
+                key_order={"model_0": names},
+            )
+            if periodic_names else None
+        )
+
+        os.makedirs(outdir, exist_ok=True)
+        backend_path = os.path.join(outdir, "eryn_state.h5")
+        # Always start fresh: a pre-existing backend would otherwise be silently
+        # continued by eryn (and trips an eryn key-order check on reload).
+        if os.path.exists(backend_path):
+            os.remove(backend_path)
+        backend = HDFBackend(backend_path)
+
+        # plotter = PlotContainer(
+        #     plots='base',
+        #     parent_folder=outdir,
+        #     tempering_palette="icefire",
+        #     discard=0.1
+        # )
+
+
+
+        sampler = EnsembleSampler(
+            nwalkers,
+            ndim,
+            self.inference_class.log_likelihood,  # vectorised: (n_points, ndim) -> (n_points,)
+            prior_container,
+            tempering_kwargs=dict(ntemps=ntemps) if ntemps > 1 else {},
+            vectorize=True,
+            periodic=periodic_eryn,
+            backend=backend,
+            **sampler_kwargs,
+        )
+
+            # plot_generator=plotter,
+            # plot_iterations=100,
+
+        # Build the initial walker coordinates: (ntemps, nwalkers, ndim).
+        coords = prior_container.rvs(size=(ntemps, nwalkers))
+
+        if injection_params is not None:
+            injection_vec = self._eryn_injection_vector(injection_params, names)
+            # Per-dimension absolute seeding std; NaN entries fall back to the
+            # injection_scatter * prior_width default below.
+            if injection_std is None:
+                std_vec = np.full(ndim, np.nan)
+            elif np.isscalar(injection_std):
+                std_vec = np.full(ndim, float(injection_std))
+            else:
+                std_vec = self._eryn_injection_vector(injection_std, names)
+            rng = np.random.default_rng()
+            for i in range(ndim):
+                if np.isnan(injection_vec[i]):
+                    continue  # parameter not supplied -> keep the prior draw
+                width = highs[i] - lows[i]
+                # Absolute std if supplied for this dim, else the scatter default.
+                std_i = std_vec[i] if not np.isnan(std_vec[i]) else injection_scatter * width
+                ball = injection_vec[i] + std_i * rng.standard_normal((ntemps, nwalkers))
+                # Clip just inside the prior so every walker starts with finite log-prior.
+                eps = 1e-10 * width
+                coords[:, :, i] = np.clip(ball, lows[i] + eps, highs[i] - eps)
+            print("Seeding eryn walkers around the supplied injection parameters.")
+
+        initial_state = State(coords)
+
+        sampler.run_mcmc(initial_state, nsteps, burn=burn, thin_by=thin_by, progress=progress)
+
+        self.sampler = sampler
+        return sampler
+
+    @staticmethod
+    def _eryn_injection_vector(injection_params, names):
+        """Build a length-``ndim`` injection vector ordered to match ``names``.
+
+        Accepts either a dict keyed by parameter name (a subset is allowed --
+        names not present are returned as ``NaN`` and later drawn from the prior)
+        or a full-length array/list already in ``names`` order.
+        """
+        if isinstance(injection_params, dict):
+            return np.array(
+                [float(injection_params[n]) if n in injection_params else np.nan
+                 for n in names],
+                dtype=np.float64,
+            )
+        injection_vec = np.asarray(injection_params, dtype=np.float64).ravel()
+        if injection_vec.size != len(names):
+            raise ValueError(
+                f"injection_params has {injection_vec.size} values but the model "
+                f"expects {len(names)} ({names})."
+            )
+        return injection_vec
 
     def _generate_noise_realisation(self, psd):
         """Draw a coloured-noise realisation from the given PSD array.

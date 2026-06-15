@@ -374,7 +374,7 @@ class Search:
         return(p,Ls)
 
     def initialize_and_run_search(self, use_GPU=True,
-                                  total_number_of_particles=100000):
+                                  total_number_of_particles=100000,priors = None):
         """Run the hierarchical semi-coherent PSO search.
 
         Creates a ``Semi_Coherent_Model`` for each rung in the segment
@@ -385,12 +385,16 @@ class Search:
         ----------
         use_GPU : bool, optional
             Whether to run the search on CUDA.  Defaults to True.
-
         """
+        # If no priors provided use the ones from the initialization of the search object.
+        if priors == None:
+            priors = list(self.prior_bounds.values())
+
+
         self.Semi_Coherent_classes = [
             Semi_Coherent_Model(
                 segment_number,
-                self.prior_bounds,
+                priors,
                 self.data,
                 self.waveform_generator,
                 self.nT,
