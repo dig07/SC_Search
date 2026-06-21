@@ -192,13 +192,17 @@ class Model_inference(Model):
         Power spectral density array (shape (nT,nF,3)) for the data.  Used for computing the search statistics.
     use_GPU : bool, optional
         Whether to use the GPU-accelerated version of the objective function.  Defaults to False
-    mass_parameterisation : {"m1m2", "mceta"}, optional
+    mass_parameterisation : {"m1m2", "mceta", "mcq"}, optional
         Which mass coordinates the sampler supplies (and hence the first two
         entries of :attr:`names` / the prior). ``"m1m2"`` (default) -> the
         sampler varies the two component masses ``(m1, m2)``; ``"mceta"`` -> it
-        varies ``(Mc, eta)`` directly. Either way the likelihood converts to
-        the ``(Mc, eta, M)`` the waveform model needs, so only the sampled
-        coordinates differ, not the physics.
+        varies ``(Mc, eta)`` directly; ``"mcq"`` -> it varies ``(Mc, q)`` with
+        mass ratio ``q`` (converted to ``eta = q / (1 + q)**2``, matching the
+        search stage's ``Semi_Coherent_Model``). Either way the likelihood
+        converts to the ``(Mc, eta, M)`` the waveform model needs, so only the
+        sampled coordinates differ, not the physics. ``"mcq"`` avoids the hard
+        equal-mass edge at ``eta = 0.25`` (a diverging Jacobian + 2-to-1 fold)
+        that degrades sampling near equal mass.
     """
 
     # # Default parameter order (m1m2 parameterisation). ``__init__`` overrides
@@ -238,9 +242,11 @@ class Model_inference(Model):
             mass_names = ["m1", "m2"]
         elif mass_parameterisation == "mceta":
             mass_names = ["Mc", "eta"]
+        elif mass_parameterisation == "mcq":
+            mass_names = ["Mc", "q"]
         else:
             raise ValueError(
-                f"mass_parameterisation must be 'm1m2' or 'mceta', got {mass_parameterisation!r}"
+                f"mass_parameterisation must be 'm1m2', 'mceta' or 'mcq', got {mass_parameterisation!r}"
             )
         self.mass_parameterisation = mass_parameterisation
         # Instance-level parameter order; samplers build priors / coordinate
@@ -336,6 +342,10 @@ class Model_inference(Model):
             if self.mass_parameterisation == "mceta":
                 Mc = self.xp.asarray(params[:,0])
                 eta = self.xp.asarray(params[:,1])
+            elif self.mass_parameterisation == "mcq":
+                Mc = self.xp.asarray(params[:,0])
+                q = self.xp.asarray(params[:,1])
+                eta = q / (1 + q)**2
             else:
                 m1 = self.xp.asarray(params[:,0])
                 m2 = self.xp.asarray(params[:,1])
@@ -360,6 +370,10 @@ class Model_inference(Model):
             if self.mass_parameterisation == "mceta":
                 Mc = self.xp.asarray(params["Mc"])
                 eta = self.xp.asarray(params["eta"])
+            elif self.mass_parameterisation == "mcq":
+                Mc = self.xp.asarray(params["Mc"])
+                q = self.xp.asarray(params["q"])
+                eta = q / (1 + q)**2
             else:
                 m1 = self.xp.asarray(params["m1"])
                 m2 = self.xp.asarray(params["m2"])
@@ -371,15 +385,15 @@ class Model_inference(Model):
         wf_params = self.xp.column_stack((M, eta, cosinc, D, f0, s1, s2, phi_coal))
         resp_params = self.xp.column_stack((cosinc, psi, lam, beta))
 
-        statistic_array = self.waveform_generator(parameters=wf_params, 
+        statistic_array = self.waveform_generator(parameters=wf_params,
                                         channels=self.data,
                                         psds=self.psd,
                                         parameters_response=resp_params,
                                         out = None,
                                         compute_statistic=True)
-        
+
         # self.statistic_array is shaped as (nlive, nT, 2)
-        d_h_per_source = self.xp.sum(statistic_array[:,:,0], axis=1) 
+        d_h_per_source = self.xp.sum(statistic_array[:,:,0], axis=1)
         h_h_per_source = self.xp.sum(statistic_array[:,:,1], axis=1)
         log_likelihoods = -0.5 * (self.d_d + h_h_per_source - 2*d_h_per_source)
 

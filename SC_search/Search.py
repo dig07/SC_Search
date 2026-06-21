@@ -387,8 +387,8 @@ class Search:
             Whether to run the search on CUDA.  Defaults to True.
         """
         # If no priors provided use the ones from the initialization of the search object.
-        if priors == None:
-            priors = list(self.prior_bounds.values())
+        if priors is None:
+            priors = self.prior_bounds
 
 
         self.Semi_Coherent_classes = [

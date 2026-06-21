@@ -9,6 +9,7 @@ from pygwtf.generator import AnalyticTimeFrequencyWaveform
 from pygwtf.response.orbits import generate_mojito_orbit_splines_resample
 
 from scipy.interpolate import CubicSpline
+from scipy.integrate import cumulative_trapezoid
 
 from ldc.lisa.noise import get_noise_model
 
@@ -246,7 +247,8 @@ class Inference:
     def setup_waveform_generator(self, mojito_orbit_filepath='./mojito_orbits.h5',
                                  mojito_ltt_filepath='./mojito_ltts.h5',
                                  use_GPU=True, fresnel_kernel_width=5, gap_mask=None,
-                                 spin_only_waveform=True):
+                                 spin_only_waveform=True,
+                                 block_vectorised = False):
         """Initialise the waveform generator. 
         
         Two main elements to this: 
@@ -287,7 +289,11 @@ class Inference:
                   'nF':self.nF,
                   'dT':self.dT,
                   'dF':self.dF,
-                  'kernel_width':fresnel_kernel_width}        
+                  'kernel_width':fresnel_kernel_width}    
+        
+        # If using block PE sampling, use the kernel width of 16
+        if block_vectorised:
+            config['kernel_width'] = 16   
         
         if use_GPU:
             backend = 'gpu'
@@ -308,7 +314,8 @@ class Inference:
                                                                 backend=backend,
                                                                 channels=self.data,
                                                                 spacecraft_orbits=self.p,
-                                                                spacecraft_ltts=self.Ls)
+                                                                spacecraft_ltts=self.Ls,
+                                                                block_vectorised_gpu = block_vectorised)
         # This returns a function which is the kernel that directly takes in waveform parameters and outputs search statistics.         
         # self.statistic_generator = self.waveform_generator.statistic_kernel
         
@@ -409,6 +416,7 @@ class Inference:
                                           injection_params=None,
                                           injection_scatter=1e-3,
                                           injection_std=None,
+                                          temper_seed_width=True,
                                           periodic=None,
                                           progress=True,
                                           sampler_kwargs={}):
@@ -431,8 +439,12 @@ class Inference:
         nwalkers : int, optional
             Number of walkers *per temperature*.  Defaults to 100.
         ntemps : int, optional
-            Number of parallel-tempering temperatures.  ``1`` (default) is a
-            plain ensemble MCMC; use ``>1`` for multimodal posteriors.
+            Number of parallel-tempering temperatures.  eryn builds its own
+            default (geometric) inverse-temperature ladder for ``ntemps`` rungs
+            and **adapts** it during the run (eryn's standard adaptive
+            tempering).  ``ntemps = 1`` (default) is a single cold chain, i.e.
+            plain ensemble MCMC with no tempering.  The cold chain (``beta = 1``)
+            is index 0, the convention the analysis/plotting code assumes.
         nsteps : int, optional
             Number of stored MCMC iterations.  Defaults to 5000.
         burn : int or None, optional
@@ -475,6 +487,15 @@ class Inference:
 
             ``None`` (default) reproduces the original behaviour where every
             dimension uses ``injection_scatter * prior_width``.
+        temper_seed_width : bool, optional
+            When seeding around an injection in a parallel-tempered run
+            (``ntemps > 1``), widen each temperature's seeding ball by
+            ``sqrt(T) = 1/sqrt(beta)`` so every rung starts at its own
+            tempered-posterior width and no chain has to slowly expand. The
+            cold chain (``beta = 1``) is left exactly as ``injection_std``
+            specifies. Rungs whose widened ball would already be as broad as
+            the prior fall back to a prior draw. ``True`` by default; set
+            ``False`` to seed every temperature with the same (cold) ball.
         periodic : dict or None, optional
             Periodic parameters as ``{name: period}``.  ``None`` (default)
             auto-detects the standard angles present (``phicoal`` -> 2*pi,
@@ -500,7 +521,7 @@ class Inference:
             np.in1d = np.isin
             
         from eryn.ensemble import EnsembleSampler
-        from eryn.prior import ProbDistContainer, uniform_dist
+        from eryn.prior import ProbDistContainer, uniform_dist, spline_prior
         from eryn.state import State
         from eryn.backends import HDFBackend
         from eryn.utils import PlotContainer
@@ -528,8 +549,75 @@ class Inference:
         lows = np.array([priors[n][0] for n in names], dtype=np.float64)
         highs = np.array([priors[n][1] for n in names], dtype=np.float64)
 
+        # Setting up a volumetric prior spline over the distances p(d) \proptp d^2
+
+        low_distance = lows[names.index("D")]
+        high_distance = highs[names.index("D")]
+
+        # Analytical normalisation factor 
+        fac = (high_distance**3)/3 - (low_distance**3)/3
+        Amp_D = 1/fac
+
+        # spline 
+        distances = np.linspace(low_distance, high_distance, 1000)
+        CDF = Amp_D * ((distances**3)/3 - (low_distance)**3/3)
+        
+        inv_cdf_spline = CubicSpline(CDF, distances)
+        pdf_spline = CubicSpline(distances, Amp_D * distances**2)
+
+        # Setting up a prior on the chirp mass and symmetric mass ratio, which is uniform in m1 and m2.
+
+        low_mc = lows[names.index("Mc")]
+        high_mc = highs[names.index("Mc")]
+
+        low_eta = lows[names.index("eta")]
+        high_eta = highs[names.index("eta")]
+
+        # p(Mc) \propto Mc 
+
+        fac_mc = (high_mc**2 - low_mc**2)/2
+        Amp_Mc = 1/fac_mc
+
+        Mcs = np.linspace(low_mc, high_mc, 1000)
+        CDF_Mc = Amp_Mc * ((Mcs**2)/2 - (low_mc**2)/2)
+
+        inv_cdf_spline_Mc = CubicSpline(CDF_Mc, Mcs)
+        pdf_spline_Mc = CubicSpline(Mcs, Amp_Mc * Mcs)
+
+        # p(eta) \propto etaˆ{-6/5}*(1-4*eta)ˆ{-1/2}
+        
+        # Normalise + build the CDF by trapezoidal integration of the PDF over
+        # the allowed eta range. cumulative_trapezoid(..., initial=0) anchors the
+        # CDF at exactly 0 at low_eta (so the inverse spline covers u in [0, 1])
+        # and its final value is the normalisation integral.
+        etas = np.linspace(low_eta, high_eta, 1000)
+        pdf_eta = etas**(-6/5) * (1 - 4*etas)**(-1/2)
+    
+        cum_eta = cumulative_trapezoid(pdf_eta, etas, initial=0.0)
+        fac_eta = cum_eta[-1]
+        Amp_eta = 1/fac_eta
+
+        CDF_eta = Amp_eta * cum_eta
+
+        inv_cdf_spline_eta = CubicSpline(CDF_eta, etas)
+        pdf_spline_eta = CubicSpline(etas, Amp_eta * pdf_eta)
+
+
+
+
         # Uniform prior per parameter, keyed by integer index (== column index).
         priors_in = {i: uniform_dist(lows[i], highs[i]) for i in range(ndim)}
+
+        # Override the three astrophysically-motivated parameters with their
+        # spline-backed priors built above: volumetric distance p(D) ∝ D^2,
+        # mass-uniform chirp mass p(Mc) ∝ Mc, and p(eta) ∝ eta^(-6/5)(1-4eta)^(-1/2).
+        priors_in[names.index("D")] = spline_prior(
+            pdf_spline, inv_cdf_spline, low_distance, high_distance)
+        priors_in[names.index("Mc")] = spline_prior(
+            pdf_spline_Mc, inv_cdf_spline_Mc, low_mc, high_mc)
+        priors_in[names.index("eta")] = spline_prior(
+            pdf_spline_eta, inv_cdf_spline_eta, low_eta, high_eta)
+
         prior_container = ProbDistContainer(priors_in)
 
         # Periodic boundaries for angular parameters (improves mixing a lot).
@@ -543,19 +631,35 @@ class Inference:
                 periodic_names["lam"] = 2 * np.pi
         else:
             periodic_names = periodic
+            
         # NB: build the PeriodicContainer ourselves rather than handing
-        # EnsembleSampler a plain dict. This installed eryn only registers
-        # periodic params whose keys are *strings* paired with a `key_order`
-        # (periodic.py:32-39); an integer-index dict is silently dropped, and a
-        # string-keyed dict raises because EnsembleSampler builds the container
-        # without `key_order`. Passing a pre-built container sidesteps both.
-        periodic_eryn = (
-            PeriodicContainer(
-                {"model_0": dict(periodic_names)},
-                key_order={"model_0": names},
-            )
-            if periodic_names else None
-        )
+        # EnsembleSampler a plain dict. This installed eryn expects the nested
+        # `{branch_name: {param: period}}` shape paired with a `key_order`
+        # (periodic.py:27-39): the str param names are resolved to column
+        # indices via key_order. Handing EnsembleSampler our flat
+        # `{param: period}` dict instead makes it call PeriodicContainer with no
+        # key_order, which crashes ('float' has no .items()). With key_order
+        # supplied here, ONLY phicoal/psi/lam (their column indices) are wrapped;
+        # every other parameter is left untouched.
+        # periodic_eryn = (
+        #     PeriodicContainer(
+        #         {"model_0": dict(periodic_names)},
+        #         key_order={"model_0": names},
+        #     )
+        #     if periodic_names else None
+        # )
+        # periodic_eryn = (
+        #     {"model_0": {names.index(n): p for n, p in periodic_names.items()}}
+        #     if periodic_names else None
+        # )
+        
+        periodic_dict = {"model_0":  {names.index(n): p for n, p in periodic_names.items()}}
+        periodic_keys = {"model_0": names}
+        
+        periodic_eryn = PeriodicContainer(periodic_dict,key_order=periodic_keys)
+        
+        print("Periodic parameters (eryn):", periodic_dict, periodic_keys)
+
 
         os.makedirs(outdir, exist_ok=True)
         backend_path = os.path.join(outdir, "eryn_state.h5")
@@ -569,22 +673,45 @@ class Inference:
         #     plots='base',
         #     parent_folder=outdir,
         #     tempering_palette="icefire",
-        #     discard=0.1
+        #     discard=0.5,
         # )
 
 
+
+        # Let eryn build and ADAPT its own temperature ladder. Passing ntemps
+        # to EnsembleSampler's tempering_kwargs makes it construct a default
+        # (geometric) inverse-temperature ladder for ntemps rungs and adapt it
+        # during the run (adaptive=True is eryn's default) -- the standard
+        # adaptive tempering. The cold chain (beta = 1) stays index 0.
+        ntemps = int(ntemps)
+        if ntemps < 1:
+            raise ValueError(f"ntemps must be >= 1 (1 = plain ensemble); got {ntemps}")
+        print(f"Adaptive temperature ladder requested: ntemps = {ntemps}")
+
+        # ntemps == 1 is a plain ensemble (no tempering); >1 hands eryn the
+        # rung count and lets it build + adapt the ladder.
+        tempering_kwargs = dict(ntemps=ntemps) if ntemps > 1 else {}
 
         sampler = EnsembleSampler(
             nwalkers,
             ndim,
             self.inference_class.log_likelihood,  # vectorised: (n_points, ndim) -> (n_points,)
             prior_container,
-            tempering_kwargs=dict(ntemps=ntemps) if ntemps > 1 else {},
+            tempering_kwargs=tempering_kwargs,
             vectorize=True,
-            periodic=periodic_eryn,
             backend=backend,
-            **sampler_kwargs,
+            periodic=periodic_eryn,
+            **sampler_kwargs
         )
+
+        betas0 = sampler.temperature_control.betas.copy()   # inverse-temp ladder, shape (ntemps,)
+        print(f"Initial beta ladder: {betas0}")
+        print(f"Initial temperature ladder: {1/betas0}")
+            # **sampler_kwargs
+        # )
+        #     plot_generator=plotter,
+        #     plot_iterations=100,
+        # )
 
             # plot_generator=plotter,
             # plot_iterations=100,
@@ -602,6 +729,23 @@ class Inference:
                 std_vec = np.full(ndim, float(injection_std))
             else:
                 std_vec = self._eryn_injection_vector(injection_std, names)
+
+            # Per-temperature widening of the seeding ball. Tempering raises the
+            # likelihood to power beta = 1/T, which divides the variance of a
+            # locally-Gaussian peak by beta -> each posterior 1-sigma grows by
+            # 1/sqrt(beta) = sqrt(T). (NOTE: sqrt(T), not T -- T scales the
+            # log-likelihood / the variance, so the *std* scales as its sqrt.)
+            # Seeding every rung at its own equilibrium width means no chain,
+            # cold or hot, has to slowly expand; the cold chain (beta = 1) is
+            # left exactly as injection_std specifies. To use literal T instead,
+            # replace np.sqrt(betas) with betas below.
+            if temper_seed_width and ntemps > 1:
+                betas = np.asarray(sampler.temperature_control.betas, dtype=np.float64)
+                with np.errstate(divide="ignore"):
+                    temp_scale = np.where(betas > 0, 1.0 / np.sqrt(betas), np.inf)
+            else:
+                temp_scale = np.ones(ntemps)
+
             rng = np.random.default_rng()
             for i in range(ndim):
                 if np.isnan(injection_vec[i]):
@@ -609,11 +753,22 @@ class Inference:
                 width = highs[i] - lows[i]
                 # Absolute std if supplied for this dim, else the scatter default.
                 std_i = std_vec[i] if not np.isnan(std_vec[i]) else injection_scatter * width
-                ball = injection_vec[i] + std_i * rng.standard_normal((ntemps, nwalkers))
+                # Widen per temperature: std_t = std_i * sqrt(T_t).
+                std_t = std_i * temp_scale                       # (ntemps,)
+                ball = injection_vec[i] + std_t[:, None] * rng.standard_normal((ntemps, nwalkers))
                 # Clip just inside the prior so every walker starts with finite log-prior.
                 eps = 1e-10 * width
-                coords[:, :, i] = np.clip(ball, lows[i] + eps, highs[i] - eps)
-            print("Seeding eryn walkers around the supplied injection parameters.")
+                ball = np.clip(ball, lows[i] + eps, highs[i] - eps)
+                # Where the widened ball is already as broad as the prior (the
+                # hottest rungs, or an infinite-T chain), the tempered posterior
+                # ~ the prior: keep the original prior draw rather than a clipped
+                # pile-up at the bounds.
+                use_prior = std_t >= width                       # (ntemps,)
+                ball[use_prior, :] = coords[use_prior, :, i]
+                coords[:, :, i] = ball
+            print("Seeding eryn walkers around the injection; hot chains widened by "
+                  "sqrt(T) per temperature." if (temper_seed_width and ntemps > 1)
+                  else "Seeding eryn walkers around the supplied injection parameters.")
 
         initial_state = State(coords)
 
