@@ -3,6 +3,7 @@ import os
 
 from .Noise import *
 from .Swarm_class import Model_inference
+from .Utility import ErynEtaMcPrior
  
 from pygwtf.models import TaylorT2Ecc, TaylorT3Spin
 from pygwtf.generator import AnalyticTimeFrequencyWaveform
@@ -407,12 +408,14 @@ class Inference:
                                           priors,
                                           nwalkers=1000,
                                           ntemps=1,
+                                          temperatures=None,
                                           nsteps=5000,
                                           burn=None,
                                           thin_by=1,
                                           use_GPU=False,
                                           outdir="./Inference_output",
                                           mass_parameterisation="m1m2",
+                                          component_mass_limits=None,
                                           injection_params=None,
                                           injection_scatter=1e-3,
                                           injection_std=None,
@@ -439,12 +442,23 @@ class Inference:
         nwalkers : int, optional
             Number of walkers *per temperature*.  Defaults to 100.
         ntemps : int, optional
-            Number of parallel-tempering temperatures.  eryn builds its own
-            default (geometric) inverse-temperature ladder for ``ntemps`` rungs
-            and **adapts** it during the run (eryn's standard adaptive
-            tempering).  ``ntemps = 1`` (default) is a single cold chain, i.e.
-            plain ensemble MCMC with no tempering.  The cold chain (``beta = 1``)
-            is index 0, the convention the analysis/plotting code assumes.
+            Number of parallel-tempering temperatures for the **adaptive** ladder.
+            eryn builds its own default (geometric) inverse-temperature ladder for
+            ``ntemps`` rungs and **adapts** it during the run (eryn's standard
+            adaptive tempering).  ``ntemps = 1`` (default) is a single cold chain,
+            i.e. plain ensemble MCMC with no tempering.  The cold chain
+            (``beta = 1``) is index 0, the convention the analysis/plotting code
+            assumes.  Ignored when ``temperatures`` is given.
+        temperatures : sequence of float or None, optional
+            An explicit, **fixed (non-adaptive)** temperature ladder.  When
+            provided it overrides ``ntemps``: the temperatures ``T`` are converted
+            to inverse temperatures ``beta = 1/T`` and handed to eryn with
+            ``adaptive=False``, so the ladder stays exactly where you put it for
+            the whole run.  Must start at the cold chain ``T = 1`` (so
+            ``temperatures[0] == 1.0``, giving ``beta = 1`` at index 0) and be
+            strictly increasing (``beta`` strictly decreasing), e.g.
+            ``[1, 1.5, 2.5, 5, 12]``.  ``None`` (default) uses the adaptive
+            ``ntemps`` ladder instead.
         nsteps : int, optional
             Number of stored MCMC iterations.  Defaults to 5000.
         burn : int or None, optional
@@ -463,6 +477,11 @@ class Inference:
             and ``m2``; ``"mceta"`` -> they use ``Mc`` and ``eta`` instead. The
             likelihood converts to ``(Mc, eta, M)`` internally either way. See
             :class:`~SC_search.Swarm_class.Model_inference`.
+        component_mass_limits : (float, float)
+            ``(m_min, m_max)`` component-mass bounds for the joint ``(Mc, eta)``
+            prior, which is uniform in ``(m1, m2)`` within the box
+            ``m_min <= m2 <= m1 <= m_max`` (intersected with the ``Mc``/``eta``
+            bound box). Required -- there is no longer a factorised fallback.
         injection_params : dict, array-like, or None, optional
             If provided, the walkers are seeded in a tight Gaussian ball around
             these values (the "injection") and evolve from there, instead of
@@ -526,6 +545,7 @@ class Inference:
         from eryn.backends import HDFBackend
         from eryn.utils import PlotContainer
         from eryn.utils.periodic import PeriodicContainer
+        from eryn.moves import StretchMove, DEMove
 
         self.inference_class = Model_inference(priors,
                                                self.data,
@@ -565,58 +585,40 @@ class Inference:
         inv_cdf_spline = CubicSpline(CDF, distances)
         pdf_spline = CubicSpline(distances, Amp_D * distances**2)
 
-        # Setting up a prior on the chirp mass and symmetric mass ratio, which is uniform in m1 and m2.
+        # Joint prior on (Mc, eta): uniform in the component masses (m1, m2) within
+        # the box  m_min <= m2 <= m1 <= m_max, restricted to the Mc/eta bound box.
+        # This is a single distribution over BOTH columns (the component-mass box is
+        # a joint constraint that cannot be factorised into per-Mc / per-eta priors),
+        # so it is registered under a tuple key below.
+        if component_mass_limits is None:
+            raise ValueError(
+                "component_mass_limits=(m_min, m_max) is required: the joint (Mc, eta) "
+                "prior imposes a uniform-in-component-mass box and needs the mass bounds.")
+        m_min, m_max = component_mass_limits
 
         low_mc = lows[names.index("Mc")]
         high_mc = highs[names.index("Mc")]
-
         low_eta = lows[names.index("eta")]
         high_eta = highs[names.index("eta")]
-
-        # p(Mc) \propto Mc 
-
-        fac_mc = (high_mc**2 - low_mc**2)/2
-        Amp_Mc = 1/fac_mc
-
-        Mcs = np.linspace(low_mc, high_mc, 1000)
-        CDF_Mc = Amp_Mc * ((Mcs**2)/2 - (low_mc**2)/2)
-
-        inv_cdf_spline_Mc = CubicSpline(CDF_Mc, Mcs)
-        pdf_spline_Mc = CubicSpline(Mcs, Amp_Mc * Mcs)
-
-        # p(eta) \propto etaˆ{-6/5}*(1-4*eta)ˆ{-1/2}
-        
-        # Normalise + build the CDF by trapezoidal integration of the PDF over
-        # the allowed eta range. cumulative_trapezoid(..., initial=0) anchors the
-        # CDF at exactly 0 at low_eta (so the inverse spline covers u in [0, 1])
-        # and its final value is the normalisation integral.
-        etas = np.linspace(low_eta, high_eta, 1000)
-        pdf_eta = etas**(-6/5) * (1 - 4*etas)**(-1/2)
-    
-        cum_eta = cumulative_trapezoid(pdf_eta, etas, initial=0.0)
-        fac_eta = cum_eta[-1]
-        Amp_eta = 1/fac_eta
-
-        CDF_eta = Amp_eta * cum_eta
-
-        inv_cdf_spline_eta = CubicSpline(CDF_eta, etas)
-        pdf_spline_eta = CubicSpline(etas, Amp_eta * pdf_eta)
-
-
-
 
         # Uniform prior per parameter, keyed by integer index (== column index).
         priors_in = {i: uniform_dist(lows[i], highs[i]) for i in range(ndim)}
 
-        # Override the three astrophysically-motivated parameters with their
-        # spline-backed priors built above: volumetric distance p(D) ∝ D^2,
-        # mass-uniform chirp mass p(Mc) ∝ Mc, and p(eta) ∝ eta^(-6/5)(1-4eta)^(-1/2).
+        # Volumetric distance prior p(D) ∝ D^2 (spline-backed, built above).
         priors_in[names.index("D")] = spline_prior(
             pdf_spline, inv_cdf_spline, low_distance, high_distance)
-        priors_in[names.index("Mc")] = spline_prior(
-            pdf_spline_Mc, inv_cdf_spline_Mc, low_mc, high_mc)
-        priors_in[names.index("eta")] = spline_prior(
-            pdf_spline_eta, inv_cdf_spline_eta, low_eta, high_eta)
+
+        # Joint (Mc, eta) prior under a TUPLE key. Drop the two per-parameter uniform
+        # entries first so each column index is owned by exactly one distribution
+        # (ProbDistContainer requires every index covered exactly once).
+        i_mc, i_eta = names.index("Mc"), names.index("eta")
+        
+        del priors_in[i_mc]
+        del priors_in[i_eta]
+
+
+        priors_in[(i_mc, i_eta)] = ErynEtaMcPrior(
+            low_mc, high_mc, low_eta, high_eta, m_min, m_max)
 
         prior_container = ProbDistContainer(priors_in)
 
@@ -678,19 +680,55 @@ class Inference:
 
 
 
-        # Let eryn build and ADAPT its own temperature ladder. Passing ntemps
-        # to EnsembleSampler's tempering_kwargs makes it construct a default
-        # (geometric) inverse-temperature ladder for ntemps rungs and adapt it
-        # during the run (adaptive=True is eryn's default) -- the standard
-        # adaptive tempering. The cold chain (beta = 1) stays index 0.
-        ntemps = int(ntemps)
-        if ntemps < 1:
-            raise ValueError(f"ntemps must be >= 1 (1 = plain ensemble); got {ntemps}")
-        print(f"Adaptive temperature ladder requested: ntemps = {ntemps}")
+        # ---- temperature ladder -------------------------------------------
+        # Two mutually-exclusive ways to configure tempering:
+        #   * temperatures (sequence): an explicit, FIXED ladder. Converted to
+        #     inverse temperatures beta = 1/T and passed with adaptive=False, so
+        #     the ladder never moves during the run.
+        #   * ntemps (int): eryn builds a default (geometric) inverse-temperature
+        #     ladder for ntemps rungs and ADAPTS it during the run (adaptive=True
+        #     is eryn's default). ntemps == 1 is a plain cold ensemble (no
+        #     tempering). The cold chain (beta = 1) stays index 0 either way --
+        #     the convention the analysis/plotting code assumes.
+        if temperatures is not None:
+            betas_fixed = 1.0 / np.asarray(temperatures, dtype=np.float64).ravel()
+            if betas_fixed.size < 1:
+                raise ValueError("temperatures must be a non-empty sequence")
+            if not np.isclose(betas_fixed[0], 1.0):
+                raise ValueError(
+                    "temperatures[0] must be the cold chain T = 1 (beta = 1); got "
+                    f"T = {1.0 / betas_fixed[0]:.6g}. Index 0 must be the beta = 1 "
+                    "cold chain (the analysis/plotting code assumes this).")
+            if betas_fixed.size > 1 and np.any(np.diff(betas_fixed) >= 0):
+                raise ValueError(
+                    "temperatures must be strictly increasing (so beta = 1/T is "
+                    f"strictly decreasing); got T = {np.asarray(temperatures)}.")
+            ntemps = int(betas_fixed.size)
+            # Fixed ladder: hand eryn the explicit betas and switch off adaptation.
+            tempering_kwargs = dict(betas=betas_fixed, adaptive=False)
+            print(f"Fixed (non-adaptive) temperature ladder requested: "
+                  f"T = {1.0 / betas_fixed}  (beta = {betas_fixed})")
+        else:
+            ntemps = int(ntemps)
+            if ntemps < 1:
+                raise ValueError(f"ntemps must be >= 1 (1 = plain ensemble); got {ntemps}")
+            print(f"Adaptive temperature ladder requested: ntemps = {ntemps}")
+            # ntemps == 1 is a plain ensemble (no tempering); >1 hands eryn the
+            # rung count and lets it build + adapt the ladder.
+            tempering_kwargs = dict(ntemps=ntemps) if ntemps > 1 else {}
 
-        # ntemps == 1 is a plain ensemble (no tempering); >1 hands eryn the
-        # rung count and lets it build + adapt the ladder.
-        tempering_kwargs = dict(ntemps=ntemps) if ntemps > 1 else {}
+        # In-model proposal: equal mix of the affine-invariant stretch move and
+        # the differential-evolution move (DE adapts to the local ensemble
+        # covariance, which mixes better through correlated posteriors). Each
+        # iteration eryn randomly picks one of the two per these weights. We
+        # leave `periodic`/`use_gpu` at their defaults so EnsembleSampler
+        # propagates its own `periodic_eryn` to both moves (ensemble.py:528-536).
+        # A `moves` entry in sampler_kwargs overrides this default.
+        sampler_kwargs = dict(sampler_kwargs)  # don't mutate the caller's dict
+        moves = sampler_kwargs.pop("moves", [
+            (StretchMove(a=2.0), 0.5),
+            (DEMove(),           0.5),
+        ])
 
         sampler = EnsembleSampler(
             nwalkers,
@@ -701,12 +739,18 @@ class Inference:
             vectorize=True,
             backend=backend,
             periodic=periodic_eryn,
+            moves=moves,
             **sampler_kwargs
         )
 
-        betas0 = sampler.temperature_control.betas.copy()   # inverse-temp ladder, shape (ntemps,)
-        print(f"Initial beta ladder: {betas0}")
-        print(f"Initial temperature ladder: {1/betas0}")
+        # ntemps == 1 (adaptive branch with empty tempering_kwargs) leaves
+        # temperature_control as None -- a plain cold ensemble has no ladder.
+        if sampler.temperature_control is not None:
+            betas0 = sampler.temperature_control.betas.copy()   # inverse-temp ladder, shape (ntemps,)
+            print(f"Initial beta ladder: {betas0}")
+            print(f"Initial temperature ladder: {1/betas0}")
+        else:
+            print("No tempering (single cold chain, ntemps = 1).")
             # **sampler_kwargs
         # )
         #     plot_generator=plotter,
@@ -769,6 +813,22 @@ class Inference:
             print("Seeding eryn walkers around the injection; hot chains widened by "
                   "sqrt(T) per temperature." if (temper_seed_width and ntemps > 1)
                   else "Seeding eryn walkers around the supplied injection parameters.")
+
+        # The per-dimension clip above keeps each parameter in its own [low, high],
+        # but cannot enforce *joint* constraints -- in particular the component-mass
+        # box of the (Mc, eta) prior, where a seeded pair can have m1 > m_max or
+        # m2 < m_min and so a -infinite log-prior. eryn refuses any initial walker
+        # with non-finite log-prior, so reseed those few from the prior (which only
+        # ever produces in-support points).
+        logp0 = prior_container.logpdf(coords.reshape(-1, ndim)).reshape(ntemps, nwalkers)
+        bad = ~np.isfinite(logp0)
+        if bad.any():
+            n_bad = int(bad.sum())
+            coords[bad] = prior_container.rvs(size=(n_bad,))
+            print(f"Reseeded {n_bad}/{ntemps * nwalkers} walker(s) from the prior: the "
+                  "injection seed ball pushed them outside the joint prior support "
+                  "(e.g. the component-mass box). Tighten injection_std or widen "
+                  "component_mass_limits to avoid this.")
 
         initial_state = State(coords)
 
